@@ -2,10 +2,12 @@ import type { SocialResearchConnector } from "./ports/social-research.port";
 import type { TrendConnector } from "./ports/trend.port";
 import type { MetaAdsConnector } from "./ports/meta-ads.port";
 import type { ExternalSystemConnector } from "./ports/external-system.port";
+import type { OTAConnector } from "./ports/ota.port";
 import { mockSocialResearchAdapter } from "./adapters/mock/mock-social-research.adapter";
 import { mockTrendAdapter } from "./adapters/mock/mock-trend.adapter";
 import { mockMetaAdsAdapter } from "./adapters/mock/mock-meta-ads.adapter";
 import { mockExternalSystemAdapter } from "./adapters/mock/mock-external-system.adapter";
+import { mockOTAAdapter } from "./adapters/mock/mock-ota.adapter";
 
 /**
  * Single place that decides which adapter backs each port. Every AI
@@ -28,4 +30,8 @@ export function getMetaAdsConnector(): MetaAdsConnector {
 
 export function getExternalSystemConnector(): ExternalSystemConnector {
   return mockExternalSystemAdapter;
+}
+
+export function getOTAConnector(): OTAConnector {
+  return mockOTAAdapter;
 }

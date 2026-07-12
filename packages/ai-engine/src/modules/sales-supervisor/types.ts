@@ -1,5 +1,8 @@
 export type RepStatus = "achieved" | "on_track" | "lagging";
 
+/** "recovery" = jauh dari target, butuh strategi pemulihan. "scaling" = hampir mencapai target, butuh strategi scaling untuk melewati target. "none" = progress sehat, tidak perlu strategi khusus. */
+export type StrategyType = "recovery" | "scaling" | "none";
+
 export interface RepProgress {
   repId: string;
   name: string;
@@ -10,6 +13,9 @@ export interface RepProgress {
   status: RepStatus;
   lastActivityDaysAgo: number;
   followUpRecommendation?: string;
+  strategyType: StrategyType;
+  /** The actual recommended strategy text — present whenever strategyType !== "none". */
+  strategy?: string;
 }
 
 export interface SalesSupervisionData {

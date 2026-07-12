@@ -1,22 +1,25 @@
 import { generateId, type AIReport, type AIRunContext, type EmployeeSOP } from "@mkh/shared";
 import { getRepository } from "@mkh/database";
 import { notify } from "@mkh/notifications";
+import { KnowledgeBase } from "@mkh/memory";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
 import { aggregateRecentReports } from "../../core/aggregate-reports";
 import type { DailyResearchSummary } from "../marketing-intelligence/types";
-import { buildMonthlyRecap, buildOperationsPlan, buildWeeklyChecklist, findOverdueItems } from "./logic";
-import type { MonthlyOperationsRecap, OperationsPlan, WeeklyChecklistRebuild } from "./types";
+import { buildChecklist, buildDailyContentPlan, buildMonthlyRecap, findOverdueItems, pickThemesForWeek } from "./logic";
+import type { DailyContentPlan, MonthlyOperationsRecap, WeeklyChecklistRebuild } from "./types";
 
-const MODULE_ID = "marketing-operation" as const;
+const MODULE_ID = "content-planner" as const;
 
 const sop: EmployeeSOP = {
   daily: [
     { id: "start", offsetMinutes: 0, label: "Mulai bekerja" },
     { id: "read_intelligence", offsetMinutes: 5, label: "Membaca laporan Marketing Intelligence terbaru" },
-    { id: "checklist", offsetMinutes: 15, label: "Menyusun/memperbarui checklist mingguan" },
-    { id: "reminders", offsetMinutes: 25, label: "Mengirim reminder untuk tugas belum selesai" },
-    { id: "report", offsetMinutes: 30, label: "Mengirim laporan operasional" },
+    { id: "recall_memory", offsetMinutes: 10, label: "Mengecek tema konten yang sudah pernah dipakai" },
+    { id: "checklist", offsetMinutes: 15, label: "Menyusun content plan & checklist harian Markom" },
+    { id: "memory_save", offsetMinutes: 20, label: "Menyimpan tema konten ke memory" },
+    { id: "reminders", offsetMinutes: 25, label: "Mengirim reminder untuk konten belum selesai" },
+    { id: "report", offsetMinutes: 30, label: "Mengirim laporan content plan harian" },
   ],
   weekly: [
     { id: "start", offsetMinutes: 0, label: "Mulai membangun ulang checklist mingguan" },
@@ -40,13 +43,31 @@ async function getLatestContentIdeas(): Promise<string[]> {
   return (report.data as DailyResearchSummary).contentChecklist ?? [];
 }
 
-async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIReport<OperationsPlan>> {
+async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIReport<DailyContentPlan>> {
   await log.step("read_intelligence", "Membaca laporan Marketing Intelligence terbaru");
   const contentIdeas = await getLatestContentIdeas();
 
-  await log.step("checklist", "Menyusun checklist mingguan");
+  await log.step("recall_memory", "Mengecek tema konten yang sudah pernah dipakai");
+  const kb = new KnowledgeBase(getRepository());
+  const recentlyUsed = await kb.recall(MODULE_ID, "content-theme-used", 50);
+  const recentlyUsedTitles = new Set(recentlyUsed.map((i) => i.title));
+
+  await log.step("checklist", "Menyusun content plan & checklist harian Markom");
+  const themes = pickThemesForWeek(contentIdeas, recentlyUsedTitles);
   const completion = await getRepository().getMarkomChecklistCompletionState();
-  const checklist = buildWeeklyChecklist(contentIdeas, completion.completedDayIndexes);
+  const checklist = buildChecklist(themes, completion.completedDayIndexes);
+
+  const freshThemeCount = themes.filter((t) => t.isFresh).length;
+  const rememberResults = await kb.remember(
+    checklist.map((item) => ({
+      id: `${MODULE_ID}:content-theme-used:${item.title}`,
+      moduleId: MODULE_ID,
+      category: "content-theme-used",
+      title: item.title,
+      metadata: { contentType: item.contentType },
+    })),
+  );
+  await log.step("memory_save", `${rememberResults.length} tema konten disimpan ke memory`);
 
   const today = todayDayIndex();
   const overdue = findOverdueItems(checklist, today);
@@ -54,19 +75,19 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
   let remindersSent = 0;
   if (overdue.length > 0) {
     await notify({
-      title: `${overdue.length} tugas checklist konten belum selesai`,
-      body: `Markom belum menyelesaikan: ${overdue.map((i) => `${i.day} (${i.task})`).join("; ")}.`,
+      title: `${overdue.length} konten checklist belum selesai`,
+      body: `Markom belum menyelesaikan: ${overdue.map((i) => `${i.day} (${i.title})`).join("; ")}.`,
       severity: overdue.some((i) => i.priority === "high") ? "warning" : "info",
       target: "markom",
       sourceModuleId: MODULE_ID,
     });
     remindersSent = overdue.length;
-    await log.step("reminders", `Reminder dikirim untuk ${overdue.length} tugas tertunda`);
+    await log.step("reminders", `Reminder dikirim untuk ${overdue.length} konten tertunda`);
   } else {
-    await log.step("reminders", "Tidak ada tugas tertunda, tidak perlu reminder");
+    await log.step("reminders", "Tidak ada konten tertunda, tidak perlu reminder");
   }
 
-  const data = buildOperationsPlan(checklist, today, remindersSent);
+  const data = buildDailyContentPlan(checklist, today, remindersSent, freshThemeCount);
 
   return {
     id: generateId("rpt"),
@@ -82,11 +103,14 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
 async function runWeekly(_context: AIRunContext, log: WorkLogger): Promise<AIReport<WeeklyChecklistRebuild>> {
   await log.step("rebuild", "Menyusun checklist baru untuk minggu ini");
   const contentIdeas = await getLatestContentIdeas();
-  const checklist = buildWeeklyChecklist(contentIdeas, []);
+  const kb = new KnowledgeBase(getRepository());
+  const recentlyUsed = await kb.recall(MODULE_ID, "content-theme-used", 50);
+  const themes = pickThemesForWeek(contentIdeas, new Set(recentlyUsed.map((i) => i.title)));
+  const checklist = buildChecklist(themes, []);
 
   const data: WeeklyChecklistRebuild = {
     periodLabel: "Minggu ini",
-    weeklyChecklist: checklist,
+    checklist,
     basedOnContentIdeas: contentIdeas.length,
   };
 
@@ -103,7 +127,7 @@ async function runWeekly(_context: AIRunContext, log: WorkLogger): Promise<AIRep
 
 async function runMonthly(_context: AIRunContext, log: WorkLogger): Promise<AIReport<MonthlyOperationsRecap>> {
   await log.step("aggregate", "Mengumpulkan laporan harian sebulan terakhir");
-  const dailyReports = await aggregateRecentReports<OperationsPlan>(MODULE_ID, 30);
+  const dailyReports = await aggregateRecentReports<DailyContentPlan>(MODULE_ID, 30);
   const data = buildMonthlyRecap("Bulan ini", dailyReports);
   await log.step("recap", "Rekap bulanan disusun");
 
@@ -118,12 +142,12 @@ async function runMonthly(_context: AIRunContext, log: WorkLogger): Promise<AIRe
   };
 }
 
-export const marketingOperationEmployee: AIEmployee<OperationsPlan | WeeklyChecklistRebuild | MonthlyOperationsRecap> = {
+export const contentPlannerEmployee: AIEmployee<DailyContentPlan | WeeklyChecklistRebuild | MonthlyOperationsRecap> = {
   id: MODULE_ID,
-  name: "Marketing Operation AI",
-  role: "Koordinator Operasional Markom",
+  name: "Content Planner AI",
+  role: "Perencana Konten",
   description:
-    "Membaca hasil Marketing Intelligence, menyusun checklist mingguan Markom, menentukan prioritas, dan mengirim reminder untuk tugas yang belum selesai lewat Notification Engine.",
+    "Membaca hasil Marketing Intelligence, menyusun content plan & checklist harian Markom (judul, jenis konten, hook, CTA, caption, deadline, status), dan mengirim reminder lewat Notification Coordinator. Memory sendiri melacak tema yang sudah pernah dipakai.",
   sop,
   runDaily,
   runWeekly,

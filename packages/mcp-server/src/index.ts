@@ -88,10 +88,10 @@ server.tool(
 
 server.tool(
   "list_knowledge_base",
-  "List Marketing Intelligence's accumulated knowledge base — viral content, competitor activity, and trend signals discovered over time, deduplicated with a timesSeen count.",
-  { category: z.string().optional(), limit: z.number().int().min(1).max(500).default(50) },
-  async ({ category, limit }) => {
-    const items = await getRepository().listKnowledgeItems({ moduleId: "marketing-intelligence", category }, limit);
+  "List an AI employee's accumulated knowledge base — every employee has its own memory (no shared memory across employees), deduplicated with a timesSeen count. Omit moduleId to list across all employees.",
+  { moduleId: z.enum(AI_MODULE_IDS).optional(), category: z.string().optional(), limit: z.number().int().min(1).max(500).default(50) },
+  async ({ moduleId, category, limit }) => {
+    const items = await getRepository().listKnowledgeItems({ moduleId, category }, limit);
     return { content: [{ type: "text", text: JSON.stringify(items, null, 2) }] };
   },
 );

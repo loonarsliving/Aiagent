@@ -1,19 +1,28 @@
 import { generateId, isSameCompanyDay, type AIModuleId, type AIReport, type AIRunContext, type EmployeeSOP } from "@mkh/shared";
 import { getRepository } from "@mkh/database";
+import { KnowledgeBase } from "@mkh/memory";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
 import { runEmployeeTask } from "../../core/agent-runner";
 import { aggregateRecentReports } from "../../core/aggregate-reports";
 import { marketingIntelligenceEmployee } from "../marketing-intelligence/module";
 import type { DailyResearchSummary } from "../marketing-intelligence/types";
-import { marketingOperationEmployee } from "../marketing-operation/module";
-import type { OperationsPlan } from "../marketing-operation/types";
-import { metaAdsOperatorEmployee } from "../meta-ads-operator/module";
-import type { MetaAdsAnalysisData } from "../meta-ads-operator/types";
+import { contentPlannerEmployee } from "../content-planner/module";
+import type { DailyContentPlan } from "../content-planner/types";
+import { metaAdsSpecialistEmployee } from "../meta-ads-specialist/module";
+import type { MetaAdsAnalysisData } from "../meta-ads-specialist/types";
 import { salesSupervisorEmployee } from "../sales-supervisor/module";
 import type { SalesSupervisionData } from "../sales-supervisor/types";
+import { branchPerformanceManagerEmployee } from "../branch-performance-manager/module";
+import type { BranchPerformanceData } from "../branch-performance-manager/types";
 import { financeAnalystEmployee } from "../finance-analyst/module";
 import type { FinanceAnalysisData } from "../finance-analyst/types";
+import { hrOfficerEmployee } from "../hr-officer/module";
+import type { HRAnalysisData } from "../hr-officer/types";
+import { otaManagerEmployee } from "../ota-manager/module";
+import type { OTAManagerData } from "../ota-manager/types";
+import { sopGuardianEmployee } from "../sop-guardian/module";
+import type { SOPComplianceData } from "../sop-guardian/types";
 import { buildExecutiveSummary, buildMonthlyBoardReport, buildWeeklyExecutiveRollup } from "./logic";
 import type { ExecutiveSummaryData, MonthlyBoardReport, WeeklyExecutiveRollup } from "./types";
 
@@ -22,8 +31,9 @@ const MODULE_ID = "ceo-assistant" as const;
 const sop: EmployeeSOP = {
   daily: [
     { id: "start", offsetMinutes: 0, label: "Mulai bekerja" },
-    { id: "collect_reports", offsetMinutes: 5, label: "Membaca laporan harian 5 AI lain" },
+    { id: "collect_reports", offsetMinutes: 5, label: "Membaca laporan harian 9 AI lain" },
     { id: "compile_summary", offsetMinutes: 20, label: "Menyusun Executive Summary" },
+    { id: "memory_save", offsetMinutes: 23, label: "Menyimpan tema perhatian berulang ke memory" },
     { id: "report", offsetMinutes: 25, label: "Mengirim Executive Summary ke Owner" },
   ],
   weekly: [
@@ -48,23 +58,53 @@ async function getOrRunLatestDaily<TData>(moduleId: AIModuleId, employee: AIEmpl
 }
 
 /**
- * The one employee that reads the other five. Runs last in the daily
- * schedule (18:00) and produces the Owner-facing Executive Summary.
+ * The one employee that reads the other nine. Runs last in the daily
+ * schedule and produces the Owner-facing Executive Summary. Has its own
+ * memory too — tracks which attention themes keep recurring day over day,
+ * separate from every other employee's memory.
  */
 async function runDaily(context: AIRunContext, log: WorkLogger): Promise<AIReport<ExecutiveSummaryData>> {
-  await log.step("collect_reports", "Membaca laporan 5 AI lain (menjalankan yang belum jalan hari ini)");
-  const [marketingIntelligence, marketingOperation, metaAds, sales, finance, financeSnapshot] = await Promise.all([
+  await log.step("collect_reports", "Membaca laporan 9 AI lain (menjalankan yang belum jalan hari ini)");
+  const [marketingIntelligence, contentPlanner, metaAds, sales, branches, finance, hr, ota, sopCompliance, financeSnapshot] = await Promise.all([
     getOrRunLatestDaily<DailyResearchSummary>("marketing-intelligence", marketingIntelligenceEmployee as AIEmployee<DailyResearchSummary>, context),
-    getOrRunLatestDaily<OperationsPlan>("marketing-operation", marketingOperationEmployee as AIEmployee<OperationsPlan>, context),
-    getOrRunLatestDaily<MetaAdsAnalysisData>("meta-ads-operator", metaAdsOperatorEmployee as AIEmployee<MetaAdsAnalysisData>, context),
+    getOrRunLatestDaily<DailyContentPlan>("content-planner", contentPlannerEmployee as AIEmployee<DailyContentPlan>, context),
+    getOrRunLatestDaily<MetaAdsAnalysisData>("meta-ads-specialist", metaAdsSpecialistEmployee as AIEmployee<MetaAdsAnalysisData>, context),
     getOrRunLatestDaily<SalesSupervisionData>("sales-supervisor", salesSupervisorEmployee as AIEmployee<SalesSupervisionData>, context),
+    getOrRunLatestDaily<BranchPerformanceData>("branch-performance-manager", branchPerformanceManagerEmployee as AIEmployee<BranchPerformanceData>, context),
     getOrRunLatestDaily<FinanceAnalysisData>("finance-analyst", financeAnalystEmployee as AIEmployee<FinanceAnalysisData>, context),
+    getOrRunLatestDaily<HRAnalysisData>("hr-officer", hrOfficerEmployee as AIEmployee<HRAnalysisData>, context),
+    getOrRunLatestDaily<OTAManagerData>("ota-manager", otaManagerEmployee as AIEmployee<OTAManagerData>, context),
+    getOrRunLatestDaily<SOPComplianceData>("sop-guardian", sopGuardianEmployee as AIEmployee<SOPComplianceData>, context),
     getRepository().getFinanceSnapshot(),
   ]);
 
   const today = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
   await log.step("compile_summary", "Menyusun Executive Summary");
-  const data = buildExecutiveSummary(today, marketingIntelligence, marketingOperation, metaAds, sales, finance, financeSnapshot.transactions);
+  const data = buildExecutiveSummary(today, {
+    marketingIntelligence,
+    contentPlanner,
+    metaAds,
+    sales,
+    branches,
+    finance,
+    hr,
+    ota,
+    sopCompliance,
+    transactions: financeSnapshot.transactions,
+  });
+
+  const kb = new KnowledgeBase(getRepository());
+  const themes = Array.from(new Set(data.attentionNeeded.map((item) => item.split(":")[0] ?? item)));
+  await kb.remember(
+    themes.map((theme) => ({
+      id: `${MODULE_ID}:attention-theme-history:${theme}`,
+      moduleId: MODULE_ID,
+      category: "attention-theme-history",
+      title: theme,
+      metadata: { date: today },
+    })),
+  );
+  await log.step("memory_save", `${themes.length} tema perhatian disimpan ke memory`);
 
   return {
     id: generateId("rpt"),
@@ -89,7 +129,7 @@ async function runWeekly(_context: AIRunContext, log: WorkLogger): Promise<AIRep
     cadence: "weekly",
     generatedAt: new Date().toISOString(),
     status: "success",
-    summary: `Rata-rata progress sales ${data.avgSalesProgressPct}% minggu ini, ${data.totalMetaAdsApprovalsProposed} approval Meta Ads diajukan.`,
+    summary: `Rata-rata progress sales ${data.avgSalesProgressPct}% minggu ini, ${data.totalMetaAdsApprovalsProposed} approval Meta Ads diajukan, ${data.totalSOPViolations} pelanggaran SOP.`,
     data,
   };
 }
@@ -116,7 +156,7 @@ export const ceoAssistantEmployee: AIEmployee<ExecutiveSummaryData | WeeklyExecu
   name: "CEO Assistant AI",
   role: "Asisten Eksekutif",
   description:
-    "Menggabungkan hasil Marketing Intelligence, Marketing Operation, Meta Ads, Sales, dan Finance AI menjadi Executive Summary harian: hal yang perlu perhatian, rekomendasi, dan prioritas besok.",
+    "Menggabungkan hasil seluruh 9 Digital Employee lain menjadi Executive Summary harian untuk Owner: hal yang perlu perhatian, rekomendasi, dan prioritas besok. Memory sendiri melacak tema perhatian yang berulang dari hari ke hari.",
   sop,
   runDaily,
   runWeekly,

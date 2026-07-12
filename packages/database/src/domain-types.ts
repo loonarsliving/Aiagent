@@ -49,6 +49,26 @@ export interface MarkomChecklistCompletionState {
   completedDayIndexes: number[];
 }
 
+export interface StaffAttendanceRecord {
+  staffId: string;
+  name: string;
+  branch: string;
+  role: string;
+  presentDays: number;
+  lateDays: number;
+  leaveDaysTaken: number;
+  leaveDaysQuota: number;
+  /** 0-100. */
+  kpiScore: number;
+}
+
+export interface HRSnapshot {
+  asOf: string;
+  periodLabel: string;
+  workingDaysInPeriod: number;
+  staff: StaffAttendanceRecord[];
+}
+
 /**
  * A single fact Marketing Intelligence has learned — a viral post, a
  * competitor move, a trend signal. Deduplicated by `id`; rediscovering the

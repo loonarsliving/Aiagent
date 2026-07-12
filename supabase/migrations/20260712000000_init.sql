@@ -7,8 +7,9 @@ create extension if not exists "pgcrypto";
 create table if not exists reports (
   id text primary key,
   module_id text not null check (module_id in (
-    'marketing-intelligence', 'marketing-operation', 'meta-ads-operator',
-    'sales-supervisor', 'finance-analyst', 'ceo-assistant'
+    'marketing-intelligence', 'content-planner', 'meta-ads-specialist',
+    'sales-supervisor', 'branch-performance-manager', 'finance-analyst',
+    'hr-officer', 'ota-manager', 'sop-guardian', 'ceo-assistant'
   )),
   cadence text not null check (cadence in ('daily', 'weekly', 'monthly')),
   generated_at timestamptz not null default now(),
@@ -16,6 +17,8 @@ create table if not exists reports (
   summary text not null,
   data jsonb not null,
   error text,
+  duration_ms integer,
+  retry_count integer,
   created_at timestamptz not null default now()
 );
 create index if not exists reports_module_id_generated_at_idx on reports (module_id, generated_at desc);
@@ -84,9 +87,10 @@ create table if not exists work_log (
   run_id text not null,
   cadence text not null check (cadence in ('daily', 'weekly', 'monthly')),
   step text not null,
-  status text not null check (status in ('info', 'success', 'error')),
+  status text not null check (status in ('info', 'success', 'error', 'retry')),
   detail text,
-  logged_at timestamptz not null default now()
+  logged_at timestamptz not null default now(),
+  attempt integer
 );
 create index if not exists work_log_run_id_idx on work_log (run_id, logged_at);
 create index if not exists work_log_module_id_idx on work_log (module_id, logged_at desc);

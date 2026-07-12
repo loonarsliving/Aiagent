@@ -9,6 +9,10 @@ const envSchema = z.object({
   NOTIFY_CHANNEL_DEFAULT: z
     .enum(["dummy", "whatsapp", "telegram", "email", "push"])
     .default("dummy"),
+  /** Max attempts per employee task run, including the first try. 1 = no retry. */
+  MAX_RETRY_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+  /** Base backoff in ms before a retry; doubles each attempt (1x, 2x, 4x, ...). */
+  RETRY_BACKOFF_MS: z.coerce.number().int().min(0).max(60_000).default(200),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
@@ -29,6 +33,8 @@ export function getConfig(): AppConfig {
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
       CRON_SECRET: process.env.CRON_SECRET,
       NOTIFY_CHANNEL_DEFAULT: process.env.NOTIFY_CHANNEL_DEFAULT,
+      MAX_RETRY_ATTEMPTS: process.env.MAX_RETRY_ATTEMPTS,
+      RETRY_BACKOFF_MS: process.env.RETRY_BACKOFF_MS,
     });
   }
   return cached;

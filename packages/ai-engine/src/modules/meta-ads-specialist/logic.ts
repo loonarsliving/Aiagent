@@ -1,6 +1,9 @@
 import type { AdCampaign } from "@mkh/connectors";
 import type { AIReport, ApprovalRequest } from "@mkh/shared";
-import type { CampaignMetrics, CampaignRecommendation, MetaAdsAnalysisData, MonthlyAdsRecap, WeeklyCampaignComparison } from "./types";
+import type { CampaignMetrics, CampaignRecommendation, MetaAdsAnalysisData, MonthlyAdsRecap, NewCampaignProposal, WeeklyCampaignComparison } from "./types";
+
+export const NEW_CAMPAIGN_DEFAULT_BUDGET_IDR = 300_000;
+export const NEW_CAMPAIGN_PUBLISH_LEAD_DAYS = 2;
 
 /** Thresholds are intentionally simple/explainable — tune per real historical data once integrated. */
 export const CPL_TARGET_IDR = 80_000;
@@ -67,6 +70,56 @@ export function recommendForCampaign(metrics: CampaignMetrics): CampaignRecommen
     action: "no_action",
     reason: "Performa dalam rentang wajar, tidak perlu perubahan saat ini.",
     proposedChange: {},
+  };
+}
+
+/**
+ * Drafts a brand-new campaign proposal from Marketing Intelligence's
+ * strongest opportunity of the day — every field the brief asks for
+ * (objective/audience/budget/creative/publish time). Returns null when
+ * there's no fresh opportunity to act on, or when a proposal for the same
+ * theme was already made recently (avoids spamming the Owner with
+ * duplicate approval requests).
+ */
+export function draftNewCampaignProposal(topOpportunity: string | undefined, recentlyProposedTitles: Set<string>): NewCampaignProposal | null {
+  if (!topOpportunity) return null;
+  const title = `Campaign baru — ${topOpportunity}`;
+  if (recentlyProposedTitles.has(title)) return null;
+
+  const publishDate = new Date(Date.now() + NEW_CAMPAIGN_PUBLISH_LEAD_DAYS * 86_400_000);
+
+  return {
+    title,
+    objective: "LEAD_GENERATION",
+    audienceDescription: "Usia 25-45, berdomisili Sulawesi Tenggara & sekitarnya, tertarik properti/investasi",
+    dailyBudgetIdr: NEW_CAMPAIGN_DEFAULT_BUDGET_IDR,
+    creativeRecommendation: `Video/reel pendek bertema "${topOpportunity}" dengan CTA simulasi cicilan gratis.`,
+    suggestedPublishAt: publishDate.toISOString().slice(0, 10),
+    reason: `Marketing Intelligence menemukan sinyal kuat: "${topOpportunity}".`,
+  };
+}
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+/** Converts a drafted proposal into the same CampaignRecommendation shape budget-adjustment recommendations use, so it flows through the exact same propose/decide workflow (see workflow.ts). */
+export function newCampaignProposalToRecommendation(proposal: NewCampaignProposal): CampaignRecommendation {
+  return {
+    campaignId: `new_${slugify(proposal.title)}`,
+    campaignName: proposal.title,
+    action: "launch_new_campaign",
+    reason: proposal.reason,
+    proposedChange: {
+      objective: proposal.objective,
+      audienceDescription: proposal.audienceDescription,
+      dailyBudgetIdr: proposal.dailyBudgetIdr,
+      creativeRecommendation: proposal.creativeRecommendation,
+      suggestedPublishAt: proposal.suggestedPublishAt,
+    },
   };
 }
 

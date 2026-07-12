@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SalesRepProgress } from "@mkh/database";
-import { buildRepProgress, buildSupervisionData, classifyRep } from "./logic";
+import { buildRepProgress, buildSupervisionData, classifyRep, classifyStrategy, recoveryStrategyFor, scalingStrategyFor } from "./logic";
 
 function rep(overrides: Partial<SalesRepProgress> = {}): SalesRepProgress {
   return {
@@ -45,6 +45,58 @@ describe("buildRepProgress", () => {
     const progress = buildRepProgress(rep({ targetIdr: 100_000_000, achievedIdr: 80_000_000, lastActivityDaysAgo: 1 }));
     expect(progress.status).toBe("on_track");
     expect(progress.followUpRecommendation).toBeUndefined();
+  });
+});
+
+describe("classifyStrategy", () => {
+  it("assigns recovery strategy to lagging reps", () => {
+    expect(classifyStrategy(30, "lagging")).toBe("recovery");
+  });
+
+  it("assigns scaling strategy to on-track reps close to target", () => {
+    expect(classifyStrategy(92, "on_track")).toBe("scaling");
+  });
+
+  it("assigns no strategy to on-track reps not yet close to target", () => {
+    expect(classifyStrategy(75, "on_track")).toBe("none");
+  });
+
+  it("assigns no strategy once a rep has achieved target", () => {
+    expect(classifyStrategy(105, "achieved")).toBe("none");
+  });
+});
+
+describe("recoveryStrategyFor / scalingStrategyFor", () => {
+  it("recovery strategy mentions the rep name and remaining gap", () => {
+    const text = recoveryStrategyFor(rep({ name: "Budi", targetIdr: 100_000_000, achievedIdr: 20_000_000 }), 20);
+    expect(text).toContain("Budi");
+    expect(text).toContain("pemulihan");
+  });
+
+  it("scaling strategy mentions the rep name and encourages exceeding target", () => {
+    const text = scalingStrategyFor(rep({ name: "Siti", targetIdr: 100_000_000, achievedIdr: 92_000_000 }), 92);
+    expect(text).toContain("Siti");
+    expect(text).toContain("scaling");
+  });
+});
+
+describe("buildRepProgress — strategy fields", () => {
+  it("attaches a recovery strategy for lagging reps", () => {
+    const progress = buildRepProgress(rep({ targetIdr: 100_000_000, achievedIdr: 20_000_000, lastActivityDaysAgo: 1 }));
+    expect(progress.strategyType).toBe("recovery");
+    expect(progress.strategy).toBeTruthy();
+  });
+
+  it("attaches a scaling strategy for reps close to target", () => {
+    const progress = buildRepProgress(rep({ targetIdr: 100_000_000, achievedIdr: 92_000_000, lastActivityDaysAgo: 0 }));
+    expect(progress.strategyType).toBe("scaling");
+    expect(progress.strategy).toBeTruthy();
+  });
+
+  it("attaches no strategy for healthy mid-range reps", () => {
+    const progress = buildRepProgress(rep({ targetIdr: 100_000_000, achievedIdr: 75_000_000, lastActivityDaysAgo: 0 }));
+    expect(progress.strategyType).toBe("none");
+    expect(progress.strategy).toBeUndefined();
   });
 });
 

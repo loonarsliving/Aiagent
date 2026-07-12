@@ -1,9 +1,11 @@
 import type { SalesRepProgress } from "@mkh/database";
 import type { AIReport } from "@mkh/shared";
-import type { MonthlyTargetRecap, RepProgress, RepStatus, SalesSupervisionData, WeeklyPaceCheck } from "./types";
+import type { MonthlyTargetRecap, RepProgress, RepStatus, SalesSupervisionData, StrategyType, WeeklyPaceCheck } from "./types";
 
 export const LAGGING_PROGRESS_THRESHOLD_PCT = 60;
 export const LAGGING_INACTIVITY_DAYS = 4;
+/** "Hampir mencapai target" — close enough that the right move is to push for scaling, not just recovery. */
+export const SCALING_PROGRESS_THRESHOLD_PCT = 90;
 
 export function classifyRep(progressPct: number, lastActivityDaysAgo: number): RepStatus {
   if (progressPct >= 100) return "achieved";
@@ -11,6 +13,14 @@ export function classifyRep(progressPct: number, lastActivityDaysAgo: number): R
     return "lagging";
   }
   return "on_track";
+}
+
+/** Jauh dari target -> recovery; hampir mencapai target -> scaling; sehat -> none. */
+export function classifyStrategy(progressPct: number, status: RepStatus): StrategyType {
+  if (status === "achieved") return "none";
+  if (status === "lagging") return "recovery";
+  if (progressPct >= SCALING_PROGRESS_THRESHOLD_PCT) return "scaling";
+  return "none";
 }
 
 export function followUpFor(rep: SalesRepProgress, progressPct: number): string | undefined {
@@ -25,9 +35,25 @@ export function followUpFor(rep: SalesRepProgress, progressPct: number): string 
   return undefined;
 }
 
+/** Strategi pemulihan untuk rep yang jauh dari target. */
+export function recoveryStrategyFor(rep: SalesRepProgress, progressPct: number): string {
+  const gapIdr = rep.targetIdr - rep.achievedIdr;
+  return `Strategi pemulihan untuk ${rep.name}: fokus closing prospek warm yang sudah di-follow-up, tinjau ulang leads Meta Ads 2 minggu terakhir, dan jadwalkan minimal 3 follow-up baru minggu ini. Kekurangan target: Rp${gapIdr.toLocaleString("id-ID")} (${progressPct.toFixed(0)}%).`;
+}
+
+/** Strategi scaling untuk rep yang hampir mencapai target — dorong supaya melewati target, bukan cuma mengejar. */
+export function scalingStrategyFor(rep: SalesRepProgress, progressPct: number): string {
+  const gapIdr = rep.targetIdr - rep.achievedIdr;
+  return `Strategi scaling untuk ${rep.name}: sudah ${progressPct.toFixed(0)}% menuju target (kekurangan Rp${gapIdr.toLocaleString("id-ID")}) — dorong upsell ke prospek existing dan minta referral dari closing terbaru untuk melewati target, bukan sekadar mengejarnya.`;
+}
+
 export function buildRepProgress(rep: SalesRepProgress): RepProgress {
   const progressPct = rep.targetIdr > 0 ? Number(((rep.achievedIdr / rep.targetIdr) * 100).toFixed(1)) : 0;
   const status = classifyRep(progressPct, rep.lastActivityDaysAgo);
+  const strategyType = classifyStrategy(progressPct, status);
+  const strategy =
+    strategyType === "recovery" ? recoveryStrategyFor(rep, progressPct) : strategyType === "scaling" ? scalingStrategyFor(rep, progressPct) : undefined;
+
   return {
     repId: rep.repId,
     name: rep.name,
@@ -38,6 +64,8 @@ export function buildRepProgress(rep: SalesRepProgress): RepProgress {
     status,
     lastActivityDaysAgo: rep.lastActivityDaysAgo,
     followUpRecommendation: status === "lagging" ? followUpFor(rep, progressPct) : undefined,
+    strategyType,
+    strategy,
   };
 }
 

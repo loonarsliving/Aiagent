@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { AdCampaign } from "@mkh/connectors";
-import { CPL_GOOD_IDR, CPL_TARGET_IDR, computeCampaignMetrics, recommendForCampaign } from "./logic";
+import {
+  CPL_GOOD_IDR,
+  CPL_TARGET_IDR,
+  computeCampaignMetrics,
+  draftNewCampaignProposal,
+  newCampaignProposalToRecommendation,
+  recommendForCampaign,
+} from "./logic";
 
 function campaign(overrides: Partial<AdCampaign> = {}): AdCampaign {
   return {
@@ -64,5 +71,40 @@ describe("recommendForCampaign", () => {
     );
     const rec = recommendForCampaign(metrics);
     expect(rec.action).toBe("no_action");
+  });
+});
+
+describe("draftNewCampaignProposal", () => {
+  it("returns null when there is no opportunity to act on", () => {
+    expect(draftNewCampaignProposal(undefined, new Set())).toBeNull();
+  });
+
+  it("drafts a full proposal (objective/audience/budget/creative/publish time) from a strong opportunity", () => {
+    const proposal = draftNewCampaignProposal("POV cicilan villa", new Set());
+    expect(proposal).not.toBeNull();
+    expect(proposal?.objective).toBeTruthy();
+    expect(proposal?.audienceDescription).toBeTruthy();
+    expect(proposal?.dailyBudgetIdr).toBeGreaterThan(0);
+    expect(proposal?.creativeRecommendation).toContain("POV cicilan villa");
+    expect(proposal?.suggestedPublishAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("does not re-propose a theme that was already proposed recently", () => {
+    const first = draftNewCampaignProposal("POV cicilan villa", new Set());
+    const second = draftNewCampaignProposal("POV cicilan villa", new Set([first!.title]));
+    expect(second).toBeNull();
+  });
+});
+
+describe("newCampaignProposalToRecommendation", () => {
+  it("converts a proposal into a launch_new_campaign recommendation carrying all proposal fields", () => {
+    const proposal = draftNewCampaignProposal("POV cicilan villa", new Set())!;
+    const rec = newCampaignProposalToRecommendation(proposal);
+
+    expect(rec.action).toBe("launch_new_campaign");
+    expect(rec.campaignName).toBe(proposal.title);
+    expect(rec.campaignId).toMatch(/^new_/);
+    expect(rec.proposedChange.objective).toBe(proposal.objective);
+    expect(rec.proposedChange.dailyBudgetIdr).toBe(proposal.dailyBudgetIdr);
   });
 });

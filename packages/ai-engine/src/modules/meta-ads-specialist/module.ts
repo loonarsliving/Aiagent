@@ -2,21 +2,32 @@ import { generateId, type AIReport, type AIRunContext, type EmployeeSOP } from "
 import { getRepository } from "@mkh/database";
 import { getMetaAdsConnector } from "@mkh/connectors";
 import { notify } from "@mkh/notifications";
+import { KnowledgeBase } from "@mkh/memory";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
 import { aggregateRecentReports } from "../../core/aggregate-reports";
-import { buildMonthlyAdsRecap, buildWeeklyComparison, computeCampaignMetrics, recommendForCampaign } from "./logic";
+import type { DailyResearchSummary } from "../marketing-intelligence/types";
+import {
+  buildMonthlyAdsRecap,
+  buildWeeklyComparison,
+  computeCampaignMetrics,
+  draftNewCampaignProposal,
+  newCampaignProposalToRecommendation,
+  recommendForCampaign,
+} from "./logic";
 import { proposeAction } from "./workflow";
 import type { MetaAdsAnalysisData, MonthlyAdsRecap, WeeklyCampaignComparison } from "./types";
 
-const MODULE_ID = "meta-ads-operator" as const;
+const MODULE_ID = "meta-ads-specialist" as const;
 
 const sop: EmployeeSOP = {
   daily: [
     { id: "start", offsetMinutes: 0, label: "Mulai bekerja" },
     { id: "fetch_campaigns", offsetMinutes: 5, label: "Membaca performa campaign" },
     { id: "analyze", offsetMinutes: 15, label: "Menghitung CPL/CTR/CPC & membandingkan campaign" },
-    { id: "propose_approvals", offsetMinutes: 25, label: "Membuat Approval Request untuk campaign yang butuh aksi" },
+    { id: "read_intelligence", offsetMinutes: 20, label: "Membaca peluang dari Marketing Intelligence" },
+    { id: "draft_proposal", offsetMinutes: 22, label: "Menyusun proposal campaign baru jika ada peluang" },
+    { id: "propose_approvals", offsetMinutes: 25, label: "Membuat Approval Request — status WAITING OWNER APPROVAL" },
     { id: "notify", offsetMinutes: 30, label: "Mengirim notifikasi jika ada campaign perlu perhatian" },
     { id: "report", offsetMinutes: 35, label: "Mengirim laporan analisa harian" },
   ],
@@ -39,20 +50,41 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
 
   const metrics = campaigns.map(computeCampaignMetrics);
   const recommendations = metrics.map(recommendForCampaign);
-  const actionable = recommendations.filter((r) => r.action !== "no_action");
-  await log.step("analyze", `${metrics.length} campaign dianalisa, ${actionable.length} butuh aksi`);
+  await log.step("analyze", `${metrics.length} campaign dianalisa`);
+
+  await log.step("read_intelligence", "Membaca peluang dari Marketing Intelligence");
+  const intelReport = await getRepository().getLatestReport("marketing-intelligence");
+  const topOpportunity =
+    intelReport?.status === "success" ? (intelReport.data as DailyResearchSummary).topOpportunities?.[0] : undefined;
+
+  const kb = new KnowledgeBase(getRepository());
+  const recentProposals = await kb.recall(MODULE_ID, "campaign-proposal", 50);
+  const proposal = draftNewCampaignProposal(topOpportunity, new Set(recentProposals.map((p) => p.title)));
+  await log.step("draft_proposal", proposal ? `Proposal baru: "${proposal.title}"` : "Tidak ada peluang baru untuk campaign baru hari ini");
+
+  const allRecommendations = proposal ? [...recommendations, newCampaignProposalToRecommendation(proposal)] : recommendations;
+  const actionable = allRecommendations.filter((r) => r.action !== "no_action");
 
   const proposedApprovalIds: string[] = [];
   for (const rec of actionable) {
     const approval = await proposeAction(rec);
     proposedApprovalIds.push(approval.id);
   }
-  await log.step("propose_approvals", `${proposedApprovalIds.length} Approval Request dibuat, menunggu keputusan Owner`);
+  await kb.remember(
+    actionable.map((rec) => ({
+      id: `${MODULE_ID}:campaign-proposal:${rec.campaignId}`,
+      moduleId: MODULE_ID,
+      category: "campaign-proposal",
+      title: rec.campaignName,
+      metadata: { action: rec.action, reason: rec.reason },
+    })),
+  );
+  await log.step("propose_approvals", `${proposedApprovalIds.length} Approval Request dibuat — status WAITING OWNER APPROVAL`);
 
   if (actionable.length > 0) {
     await notify({
-      title: `${actionable.length} campaign Meta Ads perlu perhatian`,
-      body: `Campaign berikut butuh keputusan Owner: ${actionable.map((r) => r.campaignName).join(", ")}.`,
+      title: `${actionable.length} campaign Meta Ads perlu perhatian Owner`,
+      body: `Menunggu approval: ${actionable.map((r) => r.campaignName).join(", ")}.`,
       severity: "warning",
       target: "owner",
       sourceModuleId: MODULE_ID,
@@ -62,7 +94,12 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
     await log.step("notify", "Tidak ada campaign yang perlu perhatian hari ini");
   }
 
-  const data: MetaAdsAnalysisData = { campaigns: metrics, recommendations, proposedApprovalIds };
+  const data: MetaAdsAnalysisData = {
+    campaigns: metrics,
+    recommendations: allRecommendations,
+    newCampaignProposals: proposal ? [proposal] : [],
+    proposedApprovalIds,
+  };
 
   return {
     id: generateId("rpt"),
@@ -70,7 +107,7 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
     cadence: "daily",
     generatedAt: new Date().toISOString(),
     status: "success",
-    summary: `${metrics.length} campaign dianalisa, ${actionable.length} Approval Request dibuat untuk Owner.`,
+    summary: `${metrics.length} campaign dianalisa, ${proposedApprovalIds.length} Approval Request menunggu keputusan Owner.`,
     data,
   };
 }
@@ -113,12 +150,12 @@ async function runMonthly(_context: AIRunContext, log: WorkLogger): Promise<AIRe
   };
 }
 
-export const metaAdsOperatorEmployee: AIEmployee<MetaAdsAnalysisData | WeeklyCampaignComparison | MonthlyAdsRecap> = {
+export const metaAdsSpecialistEmployee: AIEmployee<MetaAdsAnalysisData | WeeklyCampaignComparison | MonthlyAdsRecap> = {
   id: MODULE_ID,
-  name: "Meta Ads AI",
-  role: "Analis & Operator Meta Ads",
+  name: "Meta Ads Specialist AI",
+  role: "Spesialis Meta Ads",
   description:
-    "Membaca performa campaign, menghitung CPL/CTR/CPC, memberi rekomendasi, dan membuat Approval Request untuk Owner. Belum melakukan publish atau mengubah campaign — itu tahap berikutnya.",
+    "Membaca performa campaign, menghitung CPL/CTR/CPC, menyusun proposal campaign baru (objective/audience/budget/creative/waktu publish) dari peluang Marketing Intelligence, dan membuat Approval Request berstatus WAITING OWNER APPROVAL. Tidak pernah publish otomatis.",
   sop,
   runDaily,
   runWeekly,

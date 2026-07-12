@@ -12,6 +12,7 @@ import type {
 import type { Repository } from "../repository";
 import type {
   FinanceSnapshot,
+  HRSnapshot,
   KnowledgeItem,
   MarkomChecklistCompletionState,
   SalesSnapshot,
@@ -19,6 +20,7 @@ import type {
 import {
   DEFAULT_SCHEDULE,
   seedFinanceSnapshot,
+  seedHRSnapshot,
   seedMarkomChecklistCompletionState,
   seedSalesSnapshot,
 } from "../seed-data";
@@ -39,6 +41,7 @@ export class InMemoryRepository implements Repository {
   private readonly salesSnapshot: SalesSnapshot = seedSalesSnapshot();
   private readonly financeSnapshot: FinanceSnapshot = seedFinanceSnapshot();
   private readonly markomChecklistCompletion: MarkomChecklistCompletionState = seedMarkomChecklistCompletionState();
+  private readonly hrSnapshot: HRSnapshot = seedHRSnapshot();
 
   async saveReport(report: AIReport): Promise<AIReport> {
     this.reports.unshift(report);
@@ -148,5 +151,9 @@ export class InMemoryRepository implements Repository {
 
   async getMarkomChecklistCompletionState(): Promise<MarkomChecklistCompletionState> {
     return this.markomChecklistCompletion;
+  }
+
+  async getHRSnapshot(): Promise<HRSnapshot> {
+    return this.hrSnapshot;
   }
 }

@@ -8,6 +8,8 @@ const ENV_KEYS = [
   "SUPABASE_SERVICE_ROLE_KEY",
   "CRON_SECRET",
   "NOTIFY_CHANNEL_DEFAULT",
+  "MAX_RETRY_ATTEMPTS",
+  "RETRY_BACKOFF_MS",
 ] as const;
 
 let snapshot: Record<string, string | undefined>;
@@ -48,6 +50,24 @@ describe("getConfig", () => {
 
   it("rejects an invalid DATA_MODE value instead of silently accepting it", () => {
     process.env.DATA_MODE = "not-a-real-mode";
+    resetConfigCache();
+    expect(() => getConfig()).toThrow();
+  });
+
+  it("defaults MAX_RETRY_ATTEMPTS to 3 and RETRY_BACKOFF_MS to 200 when unset", () => {
+    const config = getConfig();
+    expect(config.MAX_RETRY_ATTEMPTS).toBe(3);
+    expect(config.RETRY_BACKOFF_MS).toBe(200);
+  });
+
+  it("coerces MAX_RETRY_ATTEMPTS from a string env var to a number", () => {
+    process.env.MAX_RETRY_ATTEMPTS = "5";
+    resetConfigCache();
+    expect(getConfig().MAX_RETRY_ATTEMPTS).toBe(5);
+  });
+
+  it("rejects a MAX_RETRY_ATTEMPTS outside the sane 1-10 range", () => {
+    process.env.MAX_RETRY_ATTEMPTS = "0";
     resetConfigCache();
     expect(() => getConfig()).toThrow();
   });

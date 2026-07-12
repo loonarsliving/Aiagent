@@ -3,10 +3,10 @@
 `packages/connectors` is structured as ports (interfaces) + mock adapters.
 Every employee calls a `registry.ts` factory function
 (`getSocialResearchConnector()`, `getTrendConnector()`,
-`getMetaAdsConnector()`, `getExternalSystemConnector()`) — never an
-adapter directly — so swapping mock for real is: write a new adapter file
-implementing the same port, change one return statement in `registry.ts`.
-No employee logic changes.
+`getMetaAdsConnector()`, `getOTAConnector()`, `getExternalSystemConnector()`)
+— never an adapter directly — so swapping mock for real is: write a new
+adapter file implementing the same port, change one return statement in
+`registry.ts`. No employee logic changes.
 
 | Port (`ports/*.port.ts`) | Used by | Real integration target | Auth needed |
 |---|---|---|---|
@@ -14,7 +14,8 @@ No employee logic changes.
 | `SocialResearchConnector.getCompetitorActivity` | Marketing Intelligence AI | No official "competitor" API — realistically a social-listening vendor or an internal scraper (needs its own compliance review) | Vendor API key |
 | `TrendConnector.getTrends("google")` | Marketing Intelligence AI | Google Trends API (or a trend-data vendor) | Vendor-dependent |
 | `TrendConnector.getTrends("property"\|"villa"\|"skincare")` | Marketing Intelligence AI | Same as above — category is just a query parameter, not a different API | Vendor-dependent |
-| `MetaAdsConnector.getCampaigns` | Meta Ads AI | Meta Marketing API `GET /{ad-account-id}/insights` | Meta Business app, `ads_read` |
+| `MetaAdsConnector.getCampaigns` | Meta Ads Specialist AI | Meta Marketing API `GET /{ad-account-id}/insights` | Meta Business app, `ads_read` |
+| `OTAConnector.getPropertySnapshots` | OTA Manager AI | OTA channel manager partner API (Booking.com/Agoda/Airbnb) — occupancy, ADR, competitor price, booking pace, dynamic pricing | Partner API key per channel |
 | `ExternalSystemConnector.call` | (guardrail only — nothing calls this yet) | MK Connect — the bridge to `mkh.haluoleo.id` / internal ERP | Internal API key, scoped read-only initially |
 
 **Deliberately not a port yet:** Meta Ads "execute" (budget/status

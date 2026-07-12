@@ -22,7 +22,7 @@ function emit(level: LogLevel, scope: string, message: string, fields?: LogField
   }
 }
 
-/** Structured, scoped logger — one instance per package/module (e.g. createLogger("meta-ads-operator")). */
+/** Structured, scoped logger — one instance per package/module (e.g. createLogger("meta-ads-specialist")). */
 export function createLogger(scope: string) {
   return {
     debug: (message: string, fields?: LogFields) => emit("debug", scope, message, fields),

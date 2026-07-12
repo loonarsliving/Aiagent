@@ -2,10 +2,14 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     { "path": "/api/cron/marketing-intelligence", "schedule": "0 22 * * *" },
-    { "path": "/api/cron/marketing-operation", "schedule": "30 23 * * *" },
-    { "path": "/api/cron/meta-ads-operator", "schedule": "0 0 * * *" },
+    { "path": "/api/cron/content-planner", "schedule": "30 23 * * *" },
+    { "path": "/api/cron/meta-ads-specialist", "schedule": "0 0 * * *" },
     { "path": "/api/cron/sales-supervisor", "schedule": "0 4 * * *" },
+    { "path": "/api/cron/branch-performance-manager", "schedule": "15 4 * * *" },
     { "path": "/api/cron/finance-analyst", "schedule": "0 7 * * *" },
+    { "path": "/api/cron/hr-officer", "schedule": "15 7 * * *" },
+    { "path": "/api/cron/ota-manager", "schedule": "30 7 * * *" },
+    { "path": "/api/cron/sop-guardian", "schedule": "0 9 * * *" },
     { "path": "/api/cron/ceo-assistant", "schedule": "0 10 * * *" }
   ]
 }

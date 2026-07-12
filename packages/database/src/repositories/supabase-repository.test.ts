@@ -21,6 +21,8 @@ describe("mapReportRow", () => {
       summary: "ok",
       data: { foo: "bar" },
       error: null,
+      duration_ms: 1234,
+      retry_count: 0,
     };
     expect(mapReportRow(row)).toEqual({
       id: "rpt_1",
@@ -31,6 +33,8 @@ describe("mapReportRow", () => {
       summary: "ok",
       data: { foo: "bar" },
       error: undefined,
+      durationMs: 1234,
+      retryCount: 0,
     });
   });
 
@@ -40,6 +44,12 @@ describe("mapReportRow", () => {
 
   it("passes through a real error message when present", () => {
     expect(mapReportRow({ id: "x", module_id: "m", cadence: "daily", generated_at: "t", status: "error", summary: "s", data: {}, error: "boom" }).error).toBe("boom");
+  });
+
+  it("converts null duration_ms/retry_count to undefined", () => {
+    const mapped = mapReportRow({ id: "x", module_id: "m", cadence: "daily", generated_at: "t", status: "success", summary: "s", data: {}, error: null, duration_ms: null, retry_count: null });
+    expect(mapped.durationMs).toBeUndefined();
+    expect(mapped.retryCount).toBeUndefined();
   });
 });
 
@@ -87,7 +97,7 @@ describe("toApprovalRow / mapApprovalRow round-trip", () => {
   function approval(overrides: Partial<ApprovalRequest> = {}): ApprovalRequest {
     return {
       id: "apr_1",
-      moduleId: "meta-ads-operator",
+      moduleId: "meta-ads-specialist",
       actionType: "decrease_budget",
       campaignId: "cmp_1",
       campaignName: "Campaign A",

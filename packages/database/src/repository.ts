@@ -11,6 +11,7 @@ import type {
 } from "@mkh/shared";
 import type {
   FinanceSnapshot,
+  HRSnapshot,
   KnowledgeItem,
   MarkomChecklistCompletionState,
   SalesSnapshot,
@@ -62,4 +63,5 @@ export interface Repository {
   getSalesSnapshot(): Promise<SalesSnapshot>;
   getFinanceSnapshot(): Promise<FinanceSnapshot>;
   getMarkomChecklistCompletionState(): Promise<MarkomChecklistCompletionState>;
+  getHRSnapshot(): Promise<HRSnapshot>;
 }

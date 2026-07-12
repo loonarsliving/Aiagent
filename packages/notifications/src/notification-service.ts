@@ -26,11 +26,17 @@ export interface NotifyInput {
 }
 
 /**
- * Every AI module calls this to raise something for a human's attention
- * (e.g. "Campaign A needs review", "Sales Cabang Makassar belum mencapai
- * target"). The message is always persisted first (so it shows up in the
- * dashboard even if delivery fails/is unconfigured), then dispatched to the
- * configured channel.
+ * `notify()` IS the Notification Coordinator — the single funnel every AI
+ * employee calls to raise something for a human's attention (e.g.
+ * "Campaign A needs review", "Sales Cabang Makassar belum mencapai
+ * target"). No employee is allowed to call a NotificationChannel directly;
+ * this function is the only public entry point into this package's
+ * dispatch logic (see index.ts — channels are exported for the coordinator
+ * itself and for testing, not for employees to import). The message is
+ * always persisted first (so it shows up in the dashboard even if delivery
+ * fails/is unconfigured), then dispatched to the configured channel —
+ * currently WhatsApp/Telegram/Email/Push are all inert until their env
+ * vars are set, so every send safely resolves through the dummy channel.
  */
 export async function notify(input: NotifyInput): Promise<NotificationMessage> {
   const config = getConfig();

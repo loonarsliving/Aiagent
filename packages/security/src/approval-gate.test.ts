@@ -3,7 +3,7 @@ import { ApprovalError, assertApproved, createApprovalRequest, decideApproval } 
 
 function baseInput() {
   return {
-    moduleId: "meta-ads-operator" as const,
+    moduleId: "meta-ads-specialist" as const,
     actionType: "decrease_budget" as const,
     campaignId: "cmp_1",
     campaignName: "Test Campaign",

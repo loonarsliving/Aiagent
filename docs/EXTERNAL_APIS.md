@@ -10,6 +10,7 @@ gets wired in (tracked per connector in `docs/CONNECTORS.md`).
 | Google Trends (or a trend-data vendor) | Google/property/villa/skincare trend research for Marketing Intelligence AI | Vendor-dependent | trends.google.com |
 | Meta Marketing API | Read Meta Ads campaign performance for Meta Ads AI (read-only — no execute/publish path exists yet) | OAuth 2.0, System User token with `ads_read` | developers.facebook.com/docs/marketing-apis |
 | TikTok for Business API | Read TikTok viral content/insights for Marketing Intelligence AI | OAuth 2.0, business account token | business-api.tiktok.com/portal/docs |
+| OTA channel manager API (Booking.com / Agoda / Airbnb partner API) | Occupancy, ADR, competitor price, booking pace, dynamic pricing for OTA Manager AI | Partner API key per channel | channel-specific |
 | WhatsApp Business Cloud API | Send notifications to Owner/Dir Ops/Markom | Meta Business app, permanent access token | developers.facebook.com/docs/whatsapp/cloud-api |
 | Telegram Bot API | Send notifications | Bot token (BotFather) | core.telegram.org/bots/api |
 | Email provider (Resend / SendGrid / etc.) | Send email notifications & reports | Provider API key | provider-specific |

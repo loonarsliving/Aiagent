@@ -19,7 +19,7 @@ function report(overrides: Partial<AIReport> = {}): AIReport {
 function approval(overrides: Partial<ApprovalRequest> = {}): ApprovalRequest {
   return {
     id: "apr_1",
-    moduleId: "meta-ads-operator",
+    moduleId: "meta-ads-specialist",
     actionType: "decrease_budget",
     campaignId: "cmp_1",
     campaignName: "Campaign",
@@ -214,6 +214,11 @@ describe("InMemoryRepository — business data fixtures", () => {
   it("getMarkomChecklistCompletionState returns a seeded completion list", async () => {
     const state = await repo.getMarkomChecklistCompletionState();
     expect(Array.isArray(state.completedDayIndexes)).toBe(true);
+  });
+
+  it("getHRSnapshot returns a non-empty seeded snapshot", async () => {
+    const snapshot = await repo.getHRSnapshot();
+    expect(snapshot.staff.length).toBeGreaterThan(0);
   });
 
   it("each new InMemoryRepository instance is independently seeded (no shared mutable fixture state)", async () => {

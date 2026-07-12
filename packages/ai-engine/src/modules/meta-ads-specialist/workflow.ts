@@ -17,7 +17,7 @@ export async function proposeAction(recommendation: CampaignRecommendation): Pro
     throw new NoActionRequiredError(`Campaign ${recommendation.campaignId} has no actionable recommendation`);
   }
   const approval = createApprovalRequest({
-    moduleId: "meta-ads-operator",
+    moduleId: "meta-ads-specialist",
     actionType: recommendation.action,
     campaignId: recommendation.campaignId,
     campaignName: recommendation.campaignName,

@@ -46,3 +46,26 @@ export interface AdCampaign {
   clicks: number;
   leads: number;
 }
+
+/**
+ * One property/unit's OTA metrics for a given date. Belum konek OTA
+ * sungguhan — mocked, but the shape (occupancy, ADR, competitor price,
+ * booking pace, dynamic pricing) matches what a real OTA channel manager
+ * API (e.g. Booking.com/Agoda partner API) would return, so OTA Manager's
+ * logic is ready to run unchanged the day a real adapter replaces the mock.
+ */
+export interface OTAPropertySnapshot {
+  propertyId: string;
+  propertyName: string;
+  date: string;
+  roomsTotal: number;
+  roomsBooked: number;
+  occupancyPct: number;
+  /** Average Daily Rate. */
+  adrIdr: number;
+  competitorAvgPriceIdr: number;
+  /** Bookings-per-day vs. the same point in the previous period; 100 = same pace, >100 = faster, <100 = slower. */
+  bookingPaceIndex: number;
+  /** The price currently active on the OTA channel's own dynamic pricing engine (input data, not the AI's recommendation). */
+  currentDynamicPriceIdr: number;
+}

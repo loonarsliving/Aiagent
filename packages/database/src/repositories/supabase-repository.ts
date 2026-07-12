@@ -13,6 +13,7 @@ import type {
 import type { Repository } from "../repository";
 import type {
   FinanceSnapshot,
+  HRSnapshot,
   KnowledgeItem,
   MarkomChecklistCompletionState,
   SalesSnapshot,
@@ -20,6 +21,7 @@ import type {
 import {
   DEFAULT_SCHEDULE,
   seedFinanceSnapshot,
+  seedHRSnapshot,
   seedMarkomChecklistCompletionState,
   seedSalesSnapshot,
 } from "../seed-data";
@@ -62,6 +64,8 @@ export class SupabaseRepository implements Repository {
       summary: report.summary,
       data: report.data,
       error: report.error ?? null,
+      duration_ms: report.durationMs ?? null,
+      retry_count: report.retryCount ?? null,
     });
     return report;
   }
@@ -221,6 +225,7 @@ export class SupabaseRepository implements Repository {
       status: entry.status,
       detail: entry.detail ?? null,
       logged_at: entry.loggedAt,
+      attempt: entry.attempt ?? null,
     });
     return entry;
   }
@@ -238,6 +243,7 @@ export class SupabaseRepository implements Repository {
       cadence: row.cadence as TaskCadence,
       step: row.step as string,
       status: row.status as WorkLogEntry["status"],
+      attempt: (row.attempt as number | null) ?? undefined,
       detail: (row.detail as string | null) ?? undefined,
       loggedAt: row.logged_at as string,
     }));
@@ -294,6 +300,10 @@ export class SupabaseRepository implements Repository {
   async getMarkomChecklistCompletionState(): Promise<MarkomChecklistCompletionState> {
     return seedMarkomChecklistCompletionState();
   }
+
+  async getHRSnapshot(): Promise<HRSnapshot> {
+    return seedHRSnapshot();
+  }
 }
 
 export function mapReportRow(row: Row): AIReport {
@@ -306,6 +316,8 @@ export function mapReportRow(row: Row): AIReport {
     summary: row.summary as string,
     data: row.data,
     error: (row.error as string | null) ?? undefined,
+    durationMs: (row.duration_ms as number | null) ?? undefined,
+    retryCount: (row.retry_count as number | null) ?? undefined,
   };
 }
 

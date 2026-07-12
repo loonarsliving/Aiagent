@@ -1,6 +1,7 @@
 import { generateId, type AIReport, type AIRunContext, type EmployeeSOP } from "@mkh/shared";
 import { getRepository } from "@mkh/database";
 import { notify } from "@mkh/notifications";
+import { KnowledgeBase } from "@mkh/memory";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
 import { aggregateRecentReports } from "../../core/aggregate-reports";
@@ -14,8 +15,9 @@ const sop: EmployeeSOP = {
     { id: "start", offsetMinutes: 0, label: "Mulai bekerja" },
     { id: "read_sales_data", offsetMinutes: 5, label: "Membaca data sales" },
     { id: "compute_progress", offsetMinutes: 10, label: "Menghitung target vs progress" },
-    { id: "detect_lagging", offsetMinutes: 15, label: "Mendeteksi keterlambatan follow-up" },
-    { id: "notify", offsetMinutes: 20, label: "Mengirim notifikasi ke Dir Ops jika ada yang tertinggal" },
+    { id: "build_strategy", offsetMinutes: 15, label: "Menyusun strategi pemulihan/scaling per rep" },
+    { id: "memory_save", offsetMinutes: 18, label: "Menyimpan riwayat follow-up ke memory" },
+    { id: "notify", offsetMinutes: 20, label: "Mengirim notifikasi ke Dir Ops jika ada yang perlu perhatian" },
     { id: "report", offsetMinutes: 25, label: "Mengirim laporan harian" },
   ],
   weekly: [
@@ -37,7 +39,21 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
 
   await log.step("compute_progress", "Menghitung target vs progress");
   const data = buildSupervisionData(snapshot.periodLabel, snapshot.reps);
-  await log.step("detect_lagging", `${data.laggingReps.length} sales terdeteksi tertinggal`);
+
+  const needsStrategy = data.reps.filter((r) => r.strategyType !== "none");
+  await log.step("build_strategy", `${needsStrategy.length} rep butuh strategi (recovery/scaling)`);
+
+  const kb = new KnowledgeBase(getRepository());
+  await kb.remember(
+    needsStrategy.map((r) => ({
+      id: `${MODULE_ID}:rep-follow-up-history:${r.repId}`,
+      moduleId: MODULE_ID,
+      category: "rep-follow-up-history",
+      title: r.name,
+      metadata: { strategyType: r.strategyType, branch: r.branch, progressPct: r.progressPct },
+    })),
+  );
+  await log.step("memory_save", `Riwayat follow-up disimpan untuk ${needsStrategy.length} rep`);
 
   if (data.laggingReps.length > 0) {
     const names = data.laggingReps.map((r) => `${r.name} (${r.branch})`).join(", ");
@@ -103,7 +119,7 @@ export const salesSupervisorEmployee: AIEmployee<SalesSupervisionData | WeeklyPa
   name: "Sales Supervisor AI",
   role: "Pengawas Penjualan",
   description:
-    "Menghitung target vs progress penjualan, mendeteksi keterlambatan follow-up, dan memberi rekomendasi ke Dir Ops. Read-only — tidak pernah mengubah data sales.",
+    "Mengecek target, progress, follow-up, dan closing setiap sales. Jika jauh dari target, menyusun strategi pemulihan; jika hampir mencapai target, menyusun strategi scaling. Memory sendiri melacak riwayat rep yang butuh perhatian. Read-only — tidak pernah mengubah data sales.",
   sop,
   runDaily,
   runWeekly,

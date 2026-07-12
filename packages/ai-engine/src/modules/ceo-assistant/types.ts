@@ -6,12 +6,17 @@ export interface ExecutiveSummaryData {
     laggingCount: number;
     totalReps: number;
   };
+  branches: {
+    headline: string;
+    branchesNeedingAttentionCount: number;
+    totalBranches: number;
+  };
   marketingIntelligence: {
     headline: string;
     dailyRecommendation: string;
     newSignals: number;
   };
-  marketingOperation: {
+  contentPlanner: {
     headline: string;
     incompleteCount: number;
   };
@@ -26,11 +31,24 @@ export interface ExecutiveSummaryData {
     cashflowProjectionNext7dIdr: number;
     anomalyCount: number;
   };
+  hr: {
+    headline: string;
+    flaggedStaffCount: number;
+    avgKpiScore: number;
+  };
+  ota: {
+    headline: string;
+    propertiesNeedingActionCount: number;
+  };
+  sopCompliance: {
+    headline: string;
+    violationCount: number;
+  };
   property: {
     villaIncomeIdr: number;
     perumahanIncomeIdr: number;
   };
-  /** Things the Owner should look at today — the "needs a decision or eyes on it" list. */
+  /** Things the Owner should look at today — the "needs a decision or eyes on it" list, across every employee. */
   attentionNeeded: string[];
   /** What the AI suggests doing about the items above. */
   recommendations: string[];
@@ -44,6 +62,7 @@ export interface WeeklyExecutiveRollup {
   avgSalesProgressPct: number;
   totalMetaAdsApprovalsProposed: number;
   totalFinanceAnomalies: number;
+  totalSOPViolations: number;
   topAttentionThemes: string[];
 }
 

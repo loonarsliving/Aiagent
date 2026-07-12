@@ -1,5 +1,6 @@
 import { generateId, type AIReport, type AIRunContext, type EmployeeSOP } from "@mkh/shared";
 import { getRepository } from "@mkh/database";
+import { KnowledgeBase } from "@mkh/memory";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
 import { aggregateRecentReports } from "../../core/aggregate-reports";
@@ -14,6 +15,7 @@ const sop: EmployeeSOP = {
     { id: "read_transactions", offsetMinutes: 5, label: "Membaca transaksi" },
     { id: "cashflow_projection", offsetMinutes: 10, label: "Membuat prediksi cashflow" },
     { id: "anomaly_detection", offsetMinutes: 15, label: "Mendeteksi pengeluaran tidak biasa" },
+    { id: "memory_save", offsetMinutes: 17, label: "Menyimpan riwayat anomali ke memory" },
     { id: "report", offsetMinutes: 20, label: "Mengirim laporan untuk Owner" },
   ],
   weekly: [
@@ -36,6 +38,18 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
   await log.step("cashflow_projection", "Membuat prediksi cashflow");
   const data = buildFinanceAnalysis("14 hari terakhir", snapshot.transactions);
   await log.step("anomaly_detection", `${data.anomalies.length} transaksi tidak biasa terdeteksi`);
+
+  const kb = new KnowledgeBase(getRepository());
+  await kb.remember(
+    data.anomalies.map((a) => ({
+      id: `${MODULE_ID}:anomaly-history:${a.transactionId}`,
+      moduleId: MODULE_ID,
+      category: "anomaly-history",
+      title: a.description,
+      metadata: { category: a.category, amountIdr: a.amountIdr, reasonFlagged: a.reasonFlagged },
+    })),
+  );
+  await log.step("memory_save", `Riwayat anomali disimpan untuk ${data.anomalies.length} transaksi`);
 
   return {
     id: generateId("rpt"),
@@ -87,7 +101,7 @@ export const financeAnalystEmployee: AIEmployee<FinanceAnalysisData | WeeklyFina
   name: "Finance Analyst AI",
   role: "Analis Keuangan",
   description:
-    "Membaca transaksi, membuat analisa & prediksi cashflow, mendeteksi pengeluaran tidak biasa, dan membuat laporan untuk Owner. Tidak pernah mengubah transaksi.",
+    "Membaca transaksi, membuat analisa & prediksi cashflow, mendeteksi pengeluaran tidak biasa, dan membuat laporan untuk Owner. Memory sendiri melacak riwayat anomali. Tidak pernah mengubah transaksi (Read Only).",
   sop,
   runDaily,
   runWeekly,

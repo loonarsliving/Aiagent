@@ -25,10 +25,29 @@ export interface CampaignRecommendation {
   proposedChange: Record<string, unknown>;
 }
 
+/**
+ * A brand-new campaign proposal, drafted from Marketing Intelligence's
+ * strongest opportunity of the day. Everything the brief asks for:
+ * objective, audience, budget, creative recommendation, and publish time.
+ * Goes through the exact same propose/decide approval lifecycle as a
+ * budget adjustment to an existing campaign (actionType "launch_new_campaign") —
+ * status "pending" IS "WAITING OWNER APPROVAL".
+ */
+export interface NewCampaignProposal {
+  title: string;
+  objective: "LEAD_GENERATION" | "AWARENESS" | "TRAFFIC" | "ENGAGEMENT";
+  audienceDescription: string;
+  dailyBudgetIdr: number;
+  creativeRecommendation: string;
+  suggestedPublishAt: string;
+  reason: string;
+}
+
 export interface MetaAdsAnalysisData {
   campaigns: CampaignMetrics[];
   recommendations: CampaignRecommendation[];
-  /** ApprovalRequest ids created this run via workflow.proposeAction — one per actionable recommendation. */
+  newCampaignProposals: NewCampaignProposal[];
+  /** ApprovalRequest ids created this run via workflow.proposeAction — one per actionable recommendation AND per new campaign proposal. */
   proposedApprovalIds: string[];
 }
 

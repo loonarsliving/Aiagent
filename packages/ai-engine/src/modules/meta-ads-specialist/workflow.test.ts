@@ -21,7 +21,7 @@ describe("proposeAction", () => {
     const approval = await proposeAction(actionableRecommendation());
 
     expect(approval.status).toBe("pending");
-    expect(approval.moduleId).toBe("meta-ads-operator");
+    expect(approval.moduleId).toBe("meta-ads-specialist");
 
     const persisted = await getRepository().getApproval(approval.id);
     expect(persisted).not.toBeNull();

@@ -1,15 +1,21 @@
 /**
- * The six digital employees. Marketing is split into Intelligence (research/
- * knowledge-base, no design output) and Operation (reads Intelligence's
- * report, owns the Markom checklist/reminders) per the workforce redesign.
+ * The ten cadence-scheduled digital employees. The Notification Coordinator
+ * (packages/notifications) is deliberately NOT in this list — it's an
+ * always-on dispatch service every employee calls through, not a
+ * cadence-based worker with its own daily/weekly/monthly SOP. See
+ * docs/ARCHITECTURE.md for why that's a distinct kind of thing.
  */
 export const AI_MODULE_IDS = [
-  "marketing-intelligence",
-  "marketing-operation",
-  "meta-ads-operator",
-  "sales-supervisor",
-  "finance-analyst",
   "ceo-assistant",
+  "marketing-intelligence",
+  "content-planner",
+  "meta-ads-specialist",
+  "sales-supervisor",
+  "branch-performance-manager",
+  "finance-analyst",
+  "hr-officer",
+  "ota-manager",
+  "sop-guardian",
 ] as const;
 
 export type AIModuleId = (typeof AI_MODULE_IDS)[number];
@@ -17,16 +23,24 @@ export type AIModuleId = (typeof AI_MODULE_IDS)[number];
 export type AIRunStatus = "success" | "error";
 
 export interface AIRunContext {
-  /** What kicked this run off — a scheduler slot, a manual/script trigger, or another employee (e.g. ceo-assistant reading others). */
+  /** What kicked this run off — a scheduler slot, the manual-trigger service, or another employee (e.g. ceo-assistant reading others). */
   triggeredBy: "scheduler" | "manual" | "module";
   /** ISO timestamp; defaults to "now" if omitted by the caller. */
   runAt?: string;
+  /** Who/what asked for a manual trigger — free text (e.g. "operator:cli", later "mk-connect"). Only meaningful when triggeredBy === "manual". */
+  requestedBy?: string;
 }
 
 /**
  * The standard envelope every AI employee's task returns. `data` is
  * task-specific and typed by each employee; `summary` is what shows up in
  * logs and in the CEO Assistant's rollup.
+ *
+ * `durationMs` and `retryCount` are NOT set by employee task methods —
+ * they're attached by `runEmployeeTask` (packages/ai-engine/src/core/agent-runner.ts)
+ * after the fact, which is why they're optional here. Any report read back
+ * from the Repository (i.e. anything that went through the runner) will
+ * always have both populated.
  */
 export interface AIReport<TData = unknown> {
   id: string;
@@ -38,6 +52,10 @@ export interface AIReport<TData = unknown> {
   data: TData;
   /** Populated only when status === "error". */
   error?: string;
+  /** Wall-clock time the task took, including any retries. Attached by the runner. */
+  durationMs?: number;
+  /** How many retry attempts were needed (0 = succeeded on the first try). Attached by the runner. */
+  retryCount?: number;
 }
 
 export type ApprovalStatus = "pending" | "approved" | "rejected";
@@ -46,12 +64,19 @@ export type MetaAdsActionType =
   | "increase_budget"
   | "decrease_budget"
   | "pause_campaign"
-  | "activate_campaign";
+  | "activate_campaign"
+  | "launch_new_campaign";
 
 /**
- * The output of Meta Ads AI's workflow: a proposed action awaiting Owner
- * decision via MK Connect. Execution against a real ad account is a
- * separate, not-yet-built phase — this type only covers propose/decide.
+ * The output of Meta Ads Specialist's workflow: a proposed action awaiting
+ * Owner decision — status "pending" here IS "WAITING OWNER APPROVAL" (see
+ * docs/SOP.md). Covers both adjustments to an existing campaign
+ * (increase/decrease/pause/activate) and brand-new campaign proposals
+ * (launch_new_campaign, with objective/audience/budget/creative/publish
+ * time packed into `proposedChange`) — same lifecycle either way, reusing
+ * the existing approval state machine rather than introducing a parallel
+ * one. Execution against a real ad account is a separate, not-yet-built
+ * phase — this type only covers propose/decide.
  */
 export interface ApprovalRequest {
   id: string;
@@ -108,6 +133,7 @@ export interface ScheduleRunRecord {
   id: string;
   moduleId: AIModuleId;
   cadence: TaskCadence;
+  /** "HH:mm" for a scheduled run, or "manual" for a manually-triggered one. */
   scheduledTime: string;
   startedAt: string;
   finishedAt?: string;
@@ -134,13 +160,15 @@ export interface EmployeeSOP {
   monthly?: SOPStep[];
 }
 
-export type WorkLogStatus = "info" | "success" | "error";
+export type WorkLogStatus = "info" | "success" | "error" | "retry";
 
 /**
  * The granular "what did the AI actually do" trail — e.g. "08:00 Started",
  * "08:12 Research Completed", "08:15 Saved Memory", "08:20 Finished".
  * Written by WorkLogger (packages/ai-engine/src/core/work-logger.ts) at
  * each SOP milestone, one entry per step, tied to a single run via `runId`.
+ * A `status: "retry"` entry is written each time the runner retries a
+ * failed attempt — see `attempt` below.
  */
 export interface WorkLogEntry {
   id: string;
@@ -151,4 +179,6 @@ export interface WorkLogEntry {
   status: WorkLogStatus;
   detail?: string;
   loggedAt: string;
+  /** Which attempt this step belongs to (0 = first try, 1 = first retry, ...). Omitted for cadences that never needed a retry. */
+  attempt?: number;
 }

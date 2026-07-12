@@ -1,5 +1,5 @@
 import type { ScheduleEntry } from "@mkh/shared";
-import type { FinanceSnapshot, MarkomChecklistCompletionState, SalesSnapshot } from "./domain-types";
+import type { FinanceSnapshot, HRSnapshot, MarkomChecklistCompletionState, SalesSnapshot } from "./domain-types";
 
 /**
  * Every employee's Daily + Weekly + Monthly slots. Weekly runs Monday
@@ -8,28 +8,44 @@ import type { FinanceSnapshot, MarkomChecklistCompletionState, SalesSnapshot } f
  * scheduler code (see packages/scheduler/src/cron-expression.ts).
  */
 export const DEFAULT_SCHEDULE: ScheduleEntry[] = [
-  // Daily
+  // Daily — ordered so each employee's upstream data (Marketing Intelligence's
+  // research, Sales Supervisor's progress, everyone else's reports) is fresh
+  // by the time a downstream employee (Content Planner/Meta Ads, SOP Guardian,
+  // CEO Assistant) reads it. CEO Assistant runs last; SOP Guardian runs right
+  // before it so today's compliance check is already fresh for the summary.
   { id: "sch_mi_daily", moduleId: "marketing-intelligence", cadence: "daily", time: "06:00", label: "Marketing Intelligence — Daily Research", enabled: true },
-  { id: "sch_mo_daily", moduleId: "marketing-operation", cadence: "daily", time: "07:30", label: "Marketing Operation — Daily Checklist & Reminders", enabled: true },
-  { id: "sch_ma_daily", moduleId: "meta-ads-operator", cadence: "daily", time: "08:00", label: "Meta Ads AI — Daily Campaign Analysis", enabled: true },
+  { id: "sch_cp_daily", moduleId: "content-planner", cadence: "daily", time: "07:30", label: "Content Planner — Daily Checklist & Reminders", enabled: true },
+  { id: "sch_mas_daily", moduleId: "meta-ads-specialist", cadence: "daily", time: "08:00", label: "Meta Ads Specialist — Daily Campaign Analysis", enabled: true },
   { id: "sch_ss_daily", moduleId: "sales-supervisor", cadence: "daily", time: "12:00", label: "Sales Supervisor — Daily Progress", enabled: true },
+  { id: "sch_bpm_daily", moduleId: "branch-performance-manager", cadence: "daily", time: "12:15", label: "Branch Performance Manager — Daily Branch Review", enabled: true },
   { id: "sch_fa_daily", moduleId: "finance-analyst", cadence: "daily", time: "15:00", label: "Finance Analyst — Daily Analysis", enabled: true },
+  { id: "sch_hr_daily", moduleId: "hr-officer", cadence: "daily", time: "15:15", label: "HR Officer — Daily Attendance & KPI Review", enabled: true },
+  { id: "sch_ota_daily", moduleId: "ota-manager", cadence: "daily", time: "15:30", label: "OTA Manager — Daily Occupancy & Pricing Review", enabled: true },
+  { id: "sch_sop_daily", moduleId: "sop-guardian", cadence: "daily", time: "17:00", label: "SOP Guardian — Daily Compliance Check", enabled: true },
   { id: "sch_ceo_daily", moduleId: "ceo-assistant", cadence: "daily", time: "18:00", label: "CEO Assistant — Daily Executive Summary", enabled: true },
 
   // Weekly (Monday)
   { id: "sch_mi_weekly", moduleId: "marketing-intelligence", cadence: "weekly", time: "06:30", dayOfWeek: 1, label: "Marketing Intelligence — Weekly Strategy", enabled: true },
-  { id: "sch_mo_weekly", moduleId: "marketing-operation", cadence: "weekly", time: "07:45", dayOfWeek: 1, label: "Marketing Operation — Weekly Checklist Rebuild", enabled: true },
-  { id: "sch_ma_weekly", moduleId: "meta-ads-operator", cadence: "weekly", time: "09:00", dayOfWeek: 1, label: "Meta Ads AI — Weekly Campaign Comparison", enabled: true },
+  { id: "sch_cp_weekly", moduleId: "content-planner", cadence: "weekly", time: "07:45", dayOfWeek: 1, label: "Content Planner — Weekly Checklist Rebuild", enabled: true },
+  { id: "sch_mas_weekly", moduleId: "meta-ads-specialist", cadence: "weekly", time: "09:00", dayOfWeek: 1, label: "Meta Ads Specialist — Weekly Campaign Comparison", enabled: true },
   { id: "sch_ss_weekly", moduleId: "sales-supervisor", cadence: "weekly", time: "12:30", dayOfWeek: 1, label: "Sales Supervisor — Weekly Pace Check", enabled: true },
+  { id: "sch_bpm_weekly", moduleId: "branch-performance-manager", cadence: "weekly", time: "12:45", dayOfWeek: 1, label: "Branch Performance Manager — Weekly Trend", enabled: true },
   { id: "sch_fa_weekly", moduleId: "finance-analyst", cadence: "weekly", time: "15:30", dayOfWeek: 1, label: "Finance Analyst — Weekly Summary", enabled: true },
+  { id: "sch_hr_weekly", moduleId: "hr-officer", cadence: "weekly", time: "15:45", dayOfWeek: 1, label: "HR Officer — Weekly Trend", enabled: true },
+  { id: "sch_ota_weekly", moduleId: "ota-manager", cadence: "weekly", time: "16:00", dayOfWeek: 1, label: "OTA Manager — Weekly Occupancy Trend", enabled: true },
+  { id: "sch_sop_weekly", moduleId: "sop-guardian", cadence: "weekly", time: "17:30", dayOfWeek: 1, label: "SOP Guardian — Weekly Compliance Trend", enabled: true },
   { id: "sch_ceo_weekly", moduleId: "ceo-assistant", cadence: "weekly", time: "18:30", dayOfWeek: 1, label: "CEO Assistant — Weekly Rollup", enabled: true },
 
   // Monthly (1st of month)
   { id: "sch_mi_monthly", moduleId: "marketing-intelligence", cadence: "monthly", time: "06:00", dayOfMonth: 1, label: "Marketing Intelligence — Monthly Knowledge Base Retrospective", enabled: true },
-  { id: "sch_mo_monthly", moduleId: "marketing-operation", cadence: "monthly", time: "07:30", dayOfMonth: 1, label: "Marketing Operation — Monthly Completion Recap", enabled: true },
-  { id: "sch_ma_monthly", moduleId: "meta-ads-operator", cadence: "monthly", time: "08:00", dayOfMonth: 1, label: "Meta Ads AI — Monthly Ads Recap", enabled: true },
+  { id: "sch_cp_monthly", moduleId: "content-planner", cadence: "monthly", time: "07:30", dayOfMonth: 1, label: "Content Planner — Monthly Completion Recap", enabled: true },
+  { id: "sch_mas_monthly", moduleId: "meta-ads-specialist", cadence: "monthly", time: "08:00", dayOfMonth: 1, label: "Meta Ads Specialist — Monthly Ads Recap", enabled: true },
   { id: "sch_ss_monthly", moduleId: "sales-supervisor", cadence: "monthly", time: "12:00", dayOfMonth: 1, label: "Sales Supervisor — Monthly Target Recap", enabled: true },
+  { id: "sch_bpm_monthly", moduleId: "branch-performance-manager", cadence: "monthly", time: "12:30", dayOfMonth: 1, label: "Branch Performance Manager — Monthly Recap", enabled: true },
   { id: "sch_fa_monthly", moduleId: "finance-analyst", cadence: "monthly", time: "15:00", dayOfMonth: 1, label: "Finance Analyst — Monthly Financial Report", enabled: true },
+  { id: "sch_hr_monthly", moduleId: "hr-officer", cadence: "monthly", time: "15:30", dayOfMonth: 1, label: "HR Officer — Monthly Recap", enabled: true },
+  { id: "sch_ota_monthly", moduleId: "ota-manager", cadence: "monthly", time: "16:00", dayOfMonth: 1, label: "OTA Manager — Monthly Recap", enabled: true },
+  { id: "sch_sop_monthly", moduleId: "sop-guardian", cadence: "monthly", time: "17:00", dayOfMonth: 1, label: "SOP Guardian — Monthly Compliance Recap", enabled: true },
   { id: "sch_ceo_monthly", moduleId: "ceo-assistant", cadence: "monthly", time: "19:00", dayOfMonth: 1, label: "CEO Assistant — Monthly Board Report", enabled: true },
 ];
 
@@ -72,5 +88,22 @@ export function seedMarkomChecklistCompletionState(): MarkomChecklistCompletionS
   return {
     asOf: new Date().toISOString(),
     completedDayIndexes: [0, 1],
+  };
+}
+
+export function seedHRSnapshot(): HRSnapshot {
+  return {
+    asOf: new Date().toISOString(),
+    periodLabel: "Juli 2026",
+    workingDaysInPeriod: 22,
+    staff: [
+      { staffId: "stf_01", name: "Andi Pratama", branch: "Kendari", role: "Sales", presentDays: 21, lateDays: 1, leaveDaysTaken: 1, leaveDaysQuota: 12, kpiScore: 88 },
+      { staffId: "stf_02", name: "Siti Rahma", branch: "Kendari", role: "Sales", presentDays: 16, lateDays: 5, leaveDaysTaken: 2, leaveDaysQuota: 12, kpiScore: 58 },
+      { staffId: "stf_03", name: "Budi Santoso", branch: "Makassar", role: "Sales", presentDays: 18, lateDays: 4, leaveDaysTaken: 3, leaveDaysQuota: 12, kpiScore: 62 },
+      { staffId: "stf_04", name: "Nur Aisyah", branch: "Makassar", role: "Sales", presentDays: 22, lateDays: 0, leaveDaysTaken: 0, leaveDaysQuota: 12, kpiScore: 95 },
+      { staffId: "stf_05", name: "Rizal Fahmi", branch: "Kendari", role: "Marketing", presentDays: 20, lateDays: 2, leaveDaysTaken: 1, leaveDaysQuota: 12, kpiScore: 79 },
+      { staffId: "stf_06", name: "Dewi Kartika", branch: "Makassar", role: "Finance", presentDays: 22, lateDays: 0, leaveDaysTaken: 1, leaveDaysQuota: 12, kpiScore: 90 },
+      { staffId: "stf_07", name: "Fajar Ramadhan", branch: "Kendari", role: "Operasional", presentDays: 14, lateDays: 6, leaveDaysTaken: 4, leaveDaysQuota: 12, kpiScore: 45 },
+    ],
   };
 }
