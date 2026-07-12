@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "declaration": false,
+    "baseUrl": ".",
+    "paths": {
+      "@mkh/shared": ["packages/shared/src/index.ts"],
+      "@mkh/shared/*": ["packages/shared/src/*"],
+      "@mkh/database": ["packages/database/src/index.ts"],
+      "@mkh/database/*": ["packages/database/src/*"],
+      "@mkh/security": ["packages/security/src/index.ts"],
+      "@mkh/security/*": ["packages/security/src/*"],
+      "@mkh/connectors": ["packages/connectors/src/index.ts"],
+      "@mkh/connectors/*": ["packages/connectors/src/*"],
+      "@mkh/notifications": ["packages/notifications/src/index.ts"],
+      "@mkh/notifications/*": ["packages/notifications/src/*"],
+      "@mkh/ai-engine": ["packages/ai-engine/src/index.ts"],
+      "@mkh/ai-engine/*": ["packages/ai-engine/src/*"],
+      "@mkh/scheduler": ["packages/scheduler/src/index.ts"],
+      "@mkh/scheduler/*": ["packages/scheduler/src/*"]
+    }
+  }
+}

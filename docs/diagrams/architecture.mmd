@@ -1,0 +1,47 @@
+graph TD
+    subgraph Trigger
+        Cron[Vercel Cron / node-cron]
+        Manual[Dashboard "run now" / MCP client]
+    end
+
+    subgraph Application
+        Dashboard[apps/dashboard - Next.js]
+        API[/api/cron/[moduleId]/]
+    end
+
+    subgraph Engine["packages/ai-engine"]
+        Runner[AgentRunner]
+        M1[Marketing Strategist AI]
+        M2[Meta Ads Operator AI]
+        M3[Sales Supervisor AI]
+        M4[Finance Analyst AI]
+        M5[CEO Assistant AI]
+    end
+
+    Scheduler[packages/scheduler]
+    Notif[packages/notifications]
+    Security[packages/security]
+    Connectors[packages/connectors - mocked]
+    DB[(packages/database\nRepository)]
+    MCP[packages/mcp-server]
+
+    Cron --> API --> Scheduler
+    Manual --> Dashboard
+    Scheduler --> Runner
+    Runner --> M1 & M2 & M3 & M4 & M5
+    M1 --> Connectors
+    M2 --> Connectors
+    M2 --> Security
+    M3 --> DB
+    M4 --> DB
+    M5 --> M1 & M2 & M3 & M4
+    M1 & M2 & M3 & M4 & M5 --> Notif
+    M1 & M2 & M3 & M4 & M5 --> DB
+    Notif --> DB
+    Dashboard --> DB
+    MCP --> DB
+    MCP --> Engine
+
+    Connectors -.mock only, blocked.-> MKConnect[MK Connect / mkh.haluoleo.id]
+
+    style MKConnect fill:#3a1414,stroke:#f66,color:#f66

@@ -1,0 +1,19 @@
+{
+  "name": "@mkh/mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@mkh/shared": "workspace:*",
+    "@mkh/database": "workspace:*",
+    "@mkh/ai-engine": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.6.0",
+    "zod": "^3.23.8"
+  }
+}

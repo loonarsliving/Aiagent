@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    { "path": "/api/cron/marketing-strategist", "schedule": "0 0 * * *" },
+    { "path": "/api/cron/meta-ads-operator", "schedule": "0 1 * * *" },
+    { "path": "/api/cron/sales-supervisor", "schedule": "0 4 * * *" },
+    { "path": "/api/cron/finance-analyst", "schedule": "0 7 * * *" },
+    { "path": "/api/cron/ceo-assistant", "schedule": "0 10 * * *" }
+  ]
+}
