@@ -25,6 +25,8 @@
       "@mkh/security/*": ["packages/security/src/*"],
       "@mkh/connectors": ["packages/connectors/src/index.ts"],
       "@mkh/connectors/*": ["packages/connectors/src/*"],
+      "@mkh/memory": ["packages/memory/src/index.ts"],
+      "@mkh/memory/*": ["packages/memory/src/*"],
       "@mkh/notifications": ["packages/notifications/src/index.ts"],
       "@mkh/notifications/*": ["packages/notifications/src/*"],
       "@mkh/ai-engine": ["packages/ai-engine/src/index.ts"],

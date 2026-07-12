@@ -1,47 +1,52 @@
 graph TD
-    subgraph Trigger
-        Cron[Vercel Cron / node-cron]
-        Manual[Dashboard "run now" / MCP client]
-    end
-
-    subgraph Application
-        Dashboard[apps/dashboard - Next.js]
-        API[/api/cron/[moduleId]/]
-    end
-
-    subgraph Engine["packages/ai-engine"]
-        Runner[AgentRunner]
-        M1[Marketing Strategist AI]
-        M2[Meta Ads Operator AI]
-        M3[Sales Supervisor AI]
-        M4[Finance Analyst AI]
-        M5[CEO Assistant AI]
+    subgraph Trigger["Autonomous trigger (no UI)"]
+        Cron[node-cron local-runner]
+        HTTP["/api/cron/[moduleId] - future MK Connect webhook"]
     end
 
     Scheduler[packages/scheduler]
-    Notif[packages/notifications]
-    Security[packages/security]
-    Connectors[packages/connectors - mocked]
-    DB[(packages/database\nRepository)]
-    MCP[packages/mcp-server]
 
-    Cron --> API --> Scheduler
-    Manual --> Dashboard
+    subgraph Engine["packages/ai-engine"]
+        Runner[runEmployeeTask]
+        MI[Marketing Intelligence AI]
+        MO[Marketing Operation AI]
+        MA[Meta Ads AI]
+        SS[Sales Supervisor AI]
+        FA[Finance Analyst AI]
+        CEO[CEO Assistant AI]
+    end
+
+    Memory[packages/memory - Knowledge Base]
+    Notif[packages/notifications - Notification Engine]
+    Security[packages/security - RBAC + Approval Gate]
+    Connectors[packages/connectors - ports + mock adapters]
+    DB[(packages/database - Repository)]
+    MCP[packages/mcp-server - read only]
+
+    Cron --> Scheduler
+    HTTP -.future.-> Scheduler
     Scheduler --> Runner
-    Runner --> M1 & M2 & M3 & M4 & M5
-    M1 --> Connectors
-    M2 --> Connectors
-    M2 --> Security
-    M3 --> DB
-    M4 --> DB
-    M5 --> M1 & M2 & M3 & M4
-    M1 & M2 & M3 & M4 & M5 --> Notif
-    M1 & M2 & M3 & M4 & M5 --> DB
+    Runner --> MI & MO & MA & SS & FA & CEO
+
+    MI --> Connectors
+    MI --> Memory
+    MO --> MI
+    MO --> Notif
+    MA --> Connectors
+    MA --> Security
+    MA --> Notif
+    SS --> DB
+    SS --> Notif
+    FA --> DB
+    CEO --> MI & MO & MA & SS & FA
+
+    MI & MO & MA & SS & FA & CEO --> DB
+    Memory --> DB
     Notif --> DB
-    Dashboard --> DB
     MCP --> DB
     MCP --> Engine
 
     Connectors -.mock only, blocked.-> MKConnect[MK Connect / mkh.haluoleo.id]
 
     style MKConnect fill:#3a1414,stroke:#f66,color:#f66
+    style HTTP fill:#1a1a1a,stroke:#888,color:#888,stroke-dasharray: 5 5

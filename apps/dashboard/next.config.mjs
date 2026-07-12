@@ -5,6 +5,7 @@ const nextConfig = {
     "@mkh/database",
     "@mkh/security",
     "@mkh/connectors",
+    "@mkh/memory",
     "@mkh/notifications",
     "@mkh/ai-engine",
     "@mkh/scheduler",

@@ -1,82 +1,76 @@
 # Roadmap
 
-## Stage 1 — Project structure ✅
+## Direction (current)
 
-Monorepo scaffold: `apps/dashboard` + 8 packages, tsconfig path aliases,
-Turborepo pipeline, CI (typecheck/test/build), `.env.example`, Supabase
-migrations (unused until `DATA_MODE=supabase`).
+This is a **backend AI Workforce Engine** with no UI of its own. All UI —
+today's dashboard included — is out of active scope; MK Connect owns the
+UI once integration is authorized. Everything below runs on mocked
+connectors and seeded/dummy data.
 
-## Stage 2 — All modules on dummy data ✅
+## Foundation ✅
 
-- Modul 1 Marketing Strategist AI — mocked IG/TikTok/competitor analysis,
-  weekly checklist, daily recommendation, content strategy.
-- Modul 2 Meta Ads Operator AI — Stage 1 analysis (CPL/CTR/CPC +
-  recommendations); Stage 2 approval workflow (propose → owner
-  approve/reject → execute → audit log), all still against a mocked
-  connector.
-- Modul 3 Sales Supervisor AI — target vs progress, lagging-rep detection,
-  follow-up recommendations, Dir Ops notification. Read-only.
-- Modul 4 Finance Analyst AI — cashflow projection, anomaly detection,
-  Owner report. Read-only.
-- Modul 5 CEO Assistant AI — daily Executive Summary aggregating the other
-  four + Villa/Perumahan breakdown + "needs Owner decision" list.
-- Scheduler (default 08/09/12/15/18 WITA slots, modular — add a module by
-  adding one entry to `DEFAULT_SCHEDULE`).
-- Notification service (dummy channel default; WhatsApp/Telegram/Email/Push
-  adapters scaffolded but inert until credentials are supplied).
-- Dashboard with the 6 requested menus, all reading dummy data.
-- MCP server exposing read-only system state (Claude-ready).
+- 6 AI employees implementing `AIEmployee` (daily/weekly/monthly cadences,
+  declared SOP, work-logged): Marketing Intelligence, Marketing Operation,
+  Meta Ads AI, Sales Supervisor, Finance Analyst, CEO Assistant. See
+  `docs/SOP.md` for each employee's exact steps.
+- Persistent memory (`@mkh/memory`) — Marketing Intelligence's knowledge
+  base deduplicates and strengthens (`timesSeen`) rediscovered facts
+  instead of re-searching from scratch every day.
+- Granular work log (`WorkLogEntry`) — every SOP step is persisted, not
+  just logged to console.
+- Connectors restructured as ports + mock adapters
+  (`packages/connectors/src/ports`, `adapters/mock`) — swapping to a real
+  integration later touches one adapter file + one registry line, not
+  employee logic.
+- Cadence-aware scheduler (`packages/scheduler`) — `toCronExpression()`
+  handles daily/weekly/monthly; `local-runner.ts` (node-cron) is a plain
+  backend process, the primary autonomous execution path for this phase.
+- Meta Ads AI's workflow trimmed to its authorized scope: analyze →
+  recommend → `proposeAction()` (creates a pending Approval Request). No
+  execute/publish path exists yet — see "Deferred" below.
+- Vitest coverage across every employee's calculation logic, the memory
+  merge rule, the approval workflow, the scheduler's cron-expression
+  logic, and the runner's error path.
+- `apps/dashboard` kept (not deleted) as a frozen, read-only internal
+  debug viewer from an earlier phase — receives compatibility fixes only,
+  no new features.
 
-## Stage 3 — Testing ✅
+## Explicitly deferred (each requires separate, explicit Owner authorization)
 
-Vitest unit tests for CPL/CTR/CPC calc, approval-gate role enforcement,
-sales target/progress classification, finance anomaly detection & cashflow
-projection, and the scheduler executor end-to-end against
-`InMemoryRepository`. CI runs typecheck + test + build on every push.
+1. **Real connectors.** Wire one adapter at a time behind the existing
+   ports (`docs/CONNECTORS.md`) — Instagram/TikTok first (lowest risk,
+   read-only), Meta Ads read next, Google Trends, then MK Connect.
+2. **Meta Ads execution.** Add a real `execute()` path only after Stage
+   1's recommendations have been validated against real numbers for at
+   least one reporting cycle. Bring back an execution-audit table
+   (removed this round — see `supabase/migrations/`) at that point.
+3. **Notification channels.** WhatsApp/Telegram/Email/Push adapters exist
+   as inert skeletons (`packages/notifications/src/channels/*.ts`,
+   `TODO(integration)` markers) — fill in one at a time.
+4. **MK Connect integration.** Replace `getExternalSystemConnector()`'s
+   guardrail adapter with a real client once authorized. This is also the
+   point where Sales/Finance snapshots and the Markom checklist-completion
+   state switch from seed fixtures to real ERP data.
+5. **Claude API / MCP write tools.** The MCP server
+   (`packages/mcp-server`) is read-only by design; consider gated write
+   tools (e.g. propose/decide an approval) only after the read-only
+   surface has been used in practice.
+6. **Real infrastructure.** No live Supabase project or Vercel deployment
+   exists — code is Supabase-ready (`DATA_MODE=supabase`,
+   `supabase/migrations/`) and has an HTTP cron endpoint ready
+   (`apps/dashboard/src/app/api/cron/[moduleId]`), but neither is
+   provisioned. `pnpm scheduler:dev` is sufficient to run the whole system
+   autonomously today.
 
-## Stage 4 — Stability (this delivery)
+## Known limitations to revisit
 
-`pnpm install && pnpm typecheck && pnpm test && pnpm build` all green
-before pushing (see `docs/TESTING_CHECKLIST.md` for the full checklist,
-including manual dashboard QA).
-
-## Stage 5 — Documentation ✅
-
-This roadmap + `ARCHITECTURE.md` + `CONNECTORS.md` + `EXTERNAL_APIS.md` +
-`TESTING_CHECKLIST.md`.
-
----
-
-## Post-MVP: real integration (requires explicit Owner go-ahead)
-
-Nothing below happens automatically — each phase is a separate, reviewable
-change:
-
-1. **Provision real infrastructure.** Create an actual Supabase project,
-   run `supabase/migrations/`, set `DATA_MODE=supabase` + Supabase env vars
-   in Vercel. Deploy `apps/dashboard` to Vercel, enable `vercel.json` crons,
-   set `CRON_SECRET`.
-2. **Wire one notification channel** (start with WhatsApp Business API or
-   Telegram — lowest setup cost) by filling in the adapter's `TODO(integration)`
-   in `packages/notifications/src/channels/*.ts`.
-3. **Wire Marketing connectors** (Instagram Graph API, TikTok API) —
-   replace the mocked bodies in `packages/connectors/src/social.ts`,
-   keeping the same return types so `marketing-strategist` doesn't change.
-4. **Wire Meta Ads connector** (read-only first — campaign insights),
-   validate CPL/CTR/CPC against real numbers, retune the thresholds in
-   `packages/ai-engine/src/modules/meta-ads-operator/logic.ts`.
-5. **Enable Meta Ads Stage 2 execution** — replace the mocked
-   `executeMetaAdsAction()` with a real Marketing API call, only after
-   Stage 4's read-only numbers have been validated for at least one
-   reporting cycle.
-6. **MK Connect integration** — replace `packages/connectors/src/mk-connect.ts`'s
-   guardrail with a real client once the Owner authorizes connecting to
-   `mkh.haluoleo.id`. This is the point where Sales/Finance snapshots switch
-   from seed fixtures to real ERP data.
-7. **Auth & RBAC on the dashboard** — currently unauthenticated (dummy-data
-   stage only); add real auth (Supabase Auth is the natural fit given the
-   stack) and enforce `@mkh/security` roles before any credentialed
-   deployment.
-8. **Expand MCP server** — once the approval workflow has run in production
-   for a while, consider adding gated write-tools (e.g. propose an action)
-   behind the same RBAC checks used by the dashboard.
+- Weekly/monthly task methods intentionally share a lighter-weight
+  aggregation pattern (`aggregateRecentReports`) rather than 12 fully
+  bespoke algorithms — proportionate for now, worth deepening once real
+  usage patterns are known.
+- Anomaly detection (Finance) and CPL/CTR/CPC thresholds (Meta Ads) use
+  simple, explainable heuristics tuned for small dummy data volume —
+  revisit against real historical data once connectors go live.
+- No auth/RBAC enforcement point exists yet outside the approval
+  decision check — add real auth when this stops being a backend-only
+  service invoked by trusted callers (i.e. once MK Connect calls in).

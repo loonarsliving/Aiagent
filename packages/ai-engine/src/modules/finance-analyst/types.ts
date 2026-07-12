@@ -14,3 +14,19 @@ export interface FinanceAnalysisData {
   cashflowProjectionNext7dIdr: number;
   anomalies: TransactionAnomaly[];
 }
+
+export interface WeeklyFinancialSummary {
+  periodLabel: string;
+  daysAggregated: number;
+  avgNetCashflowIdr: number;
+  totalAnomaliesDetected: number;
+  recurringAnomalyCategories: string[];
+}
+
+export interface MonthlyFinancialReport {
+  periodLabel: string;
+  daysAggregated: number;
+  avgNetCashflowIdr: number;
+  totalAnomaliesDetected: number;
+  note: string;
+}

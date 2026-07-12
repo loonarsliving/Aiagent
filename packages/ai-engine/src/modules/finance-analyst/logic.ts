@@ -1,5 +1,6 @@
 import type { FinanceTransaction } from "@mkh/database";
-import type { FinanceAnalysisData, TransactionAnomaly } from "./types";
+import type { AIReport } from "@mkh/shared";
+import type { FinanceAnalysisData, MonthlyFinancialReport, TransactionAnomaly, WeeklyFinancialSummary } from "./types";
 
 /**
  * Anomaly rule: an expense/income is flagged when it's materially larger
@@ -67,4 +68,40 @@ export function buildFinanceAnalysis(periodLabel: string, transactions: FinanceT
     cashflowProjectionNext7dIdr: projectCashflowNext7Days(transactions),
     anomalies: detectAnomalies(transactions),
   };
+}
+
+export function buildWeeklyFinancialSummary(periodLabel: string, dailyReports: AIReport<FinanceAnalysisData>[]): WeeklyFinancialSummary {
+  const avgNetCashflowIdr =
+    dailyReports.length > 0
+      ? Math.round(dailyReports.reduce((sum, r) => sum + (r.data?.netCashflowIdr ?? 0), 0) / dailyReports.length)
+      : 0;
+
+  const categoryCounts = new Map<string, number>();
+  let totalAnomaliesDetected = 0;
+  for (const report of dailyReports) {
+    for (const a of report.data?.anomalies ?? []) {
+      totalAnomaliesDetected += 1;
+      categoryCounts.set(a.category, (categoryCounts.get(a.category) ?? 0) + 1);
+    }
+  }
+  const recurringAnomalyCategories = Array.from(categoryCounts.entries())
+    .filter(([, count]) => count > 1)
+    .map(([category]) => category);
+
+  return { periodLabel, daysAggregated: dailyReports.length, avgNetCashflowIdr, totalAnomaliesDetected, recurringAnomalyCategories };
+}
+
+export function buildMonthlyFinancialReport(periodLabel: string, dailyReports: AIReport<FinanceAnalysisData>[]): MonthlyFinancialReport {
+  const avgNetCashflowIdr =
+    dailyReports.length > 0
+      ? Math.round(dailyReports.reduce((sum, r) => sum + (r.data?.netCashflowIdr ?? 0), 0) / dailyReports.length)
+      : 0;
+  const totalAnomaliesDetected = dailyReports.reduce((sum, r) => sum + (r.data?.anomalies.length ?? 0), 0);
+
+  const note =
+    dailyReports.length === 0
+      ? "Belum ada laporan harian bulan ini untuk direkap."
+      : `Rata-rata net cashflow harian Rp${avgNetCashflowIdr.toLocaleString("id-ID")}, ${totalAnomaliesDetected} transaksi tidak biasa terdeteksi sepanjang bulan.`;
+
+  return { periodLabel, daysAggregated: dailyReports.length, avgNetCashflowIdr, totalAnomaliesDetected, note };
 }

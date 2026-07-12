@@ -1,27 +1,30 @@
 import type { AIModuleId } from "@mkh/shared";
-import type { AIModule } from "./core/ai-module";
-import { marketingStrategistModule } from "./modules/marketing-strategist/module";
-import { metaAdsOperatorModule } from "./modules/meta-ads-operator/module";
-import { salesSupervisorModule } from "./modules/sales-supervisor/module";
-import { financeAnalystModule } from "./modules/finance-analyst/module";
-import { ceoAssistantModule } from "./modules/ceo-assistant/module";
+import type { AIEmployee } from "./core/ai-employee";
+import { marketingIntelligenceEmployee } from "./modules/marketing-intelligence/module";
+import { marketingOperationEmployee } from "./modules/marketing-operation/module";
+import { metaAdsOperatorEmployee } from "./modules/meta-ads-operator/module";
+import { salesSupervisorEmployee } from "./modules/sales-supervisor/module";
+import { financeAnalystEmployee } from "./modules/finance-analyst/module";
+import { ceoAssistantEmployee } from "./modules/ceo-assistant/module";
 
 /**
- * Single lookup table for every module in the system — the scheduler,
- * dashboard "run now" buttons, and the MCP server all resolve modules by
- * id through this registry instead of importing each module individually.
- * Adding a 6th AI module means adding one line here.
+ * Single lookup table for every digital employee in the system — the
+ * scheduler and the MCP server resolve employees by id through this
+ * registry instead of importing each module individually. Adding a 7th
+ * employee means adding one line here (plus their schedule entries in
+ * packages/database/src/seed-data.ts).
  */
-export const MODULE_REGISTRY: Record<AIModuleId, AIModule<unknown>> = {
-  "marketing-strategist": marketingStrategistModule as AIModule<unknown>,
-  "meta-ads-operator": metaAdsOperatorModule as AIModule<unknown>,
-  "sales-supervisor": salesSupervisorModule as AIModule<unknown>,
-  "finance-analyst": financeAnalystModule as AIModule<unknown>,
-  "ceo-assistant": ceoAssistantModule as AIModule<unknown>,
+export const EMPLOYEE_REGISTRY: Record<AIModuleId, AIEmployee<unknown>> = {
+  "marketing-intelligence": marketingIntelligenceEmployee as AIEmployee<unknown>,
+  "marketing-operation": marketingOperationEmployee as AIEmployee<unknown>,
+  "meta-ads-operator": metaAdsOperatorEmployee as AIEmployee<unknown>,
+  "sales-supervisor": salesSupervisorEmployee as AIEmployee<unknown>,
+  "finance-analyst": financeAnalystEmployee as AIEmployee<unknown>,
+  "ceo-assistant": ceoAssistantEmployee as AIEmployee<unknown>,
 };
 
-export function getModule(id: AIModuleId): AIModule<unknown> {
-  const module = MODULE_REGISTRY[id];
-  if (!module) throw new Error(`Unknown AI module id: ${id}`);
-  return module;
+export function getEmployee(id: AIModuleId): AIEmployee<unknown> {
+  const employee = EMPLOYEE_REGISTRY[id];
+  if (!employee) throw new Error(`Unknown AI employee id: ${id}`);
+  return employee;
 }

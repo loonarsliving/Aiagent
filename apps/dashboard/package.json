@@ -15,6 +15,7 @@
     "@mkh/database": "workspace:*",
     "@mkh/security": "workspace:*",
     "@mkh/connectors": "workspace:*",
+    "@mkh/memory": "workspace:*",
     "@mkh/notifications": "workspace:*",
     "@mkh/ai-engine": "workspace:*",
     "@mkh/scheduler": "workspace:*",

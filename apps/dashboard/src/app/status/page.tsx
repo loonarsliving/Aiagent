@@ -1,6 +1,6 @@
 import { getRepository } from "@mkh/database";
 import { AI_MODULE_IDS } from "@mkh/shared";
-import { MODULE_REGISTRY } from "@mkh/ai-engine";
+import { EMPLOYEE_REGISTRY } from "@mkh/ai-engine";
 import { Badge, toneForRunStatus } from "@/components/Badge";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export default async function StatusPage() {
   const statuses = await Promise.all(
     AI_MODULE_IDS.map(async (id) => {
       const report = await repo.getLatestReport(id);
-      const module = MODULE_REGISTRY[id];
+      const module = EMPLOYEE_REGISTRY[id];
       return { id, module, report };
     }),
   );

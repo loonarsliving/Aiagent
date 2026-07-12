@@ -1,36 +1,38 @@
-export interface SocialPostInsight {
-  postId: string;
-  platform: "instagram" | "tiktok";
-  caption: string;
+export type SocialPlatform = "instagram" | "tiktok";
+
+export type TrendCategory = "google" | "property" | "villa" | "skincare";
+
+/**
+ * One piece of viral content discovered during research. `externalId` is
+ * the dedup key Marketing Intelligence's knowledge base uses — a real
+ * adapter would set this to the platform's own post id.
+ */
+export interface ViralContentItem {
+  externalId: string;
+  platform: SocialPlatform;
+  title: string;
+  url?: string;
   postedAt: string;
-  likes: number;
-  comments: number;
-  shares: number;
-  reach: number;
-  format: "reel" | "carousel" | "single_image" | "video";
+  engagementScore: number;
+  format: string;
+  theme: string;
 }
 
-export interface SocialAccountSnapshot {
-  platform: "instagram" | "tiktok";
-  followers: number;
-  followersDelta7d: number;
-  avgEngagementRatePct: number;
-  topPosts: SocialPostInsight[];
-}
-
-export interface CompetitorSnapshot {
-  name: string;
-  platform: "instagram" | "tiktok";
+export interface CompetitorActivity {
+  externalId: string;
+  competitorName: string;
+  platform: SocialPlatform;
   followers: number;
   postFrequencyPerWeek: number;
-  standoutContentTheme: string;
+  standoutTheme: string;
 }
 
-export interface TrendSignal {
-  label: string;
-  platform: "instagram" | "tiktok";
+export interface MarketTrendSignal {
+  externalId: string;
+  category: TrendCategory;
+  keyword: string;
   momentum: "rising" | "steady" | "declining";
-  suggestedAngle: string;
+  note: string;
 }
 
 export interface AdCampaign {
@@ -43,9 +45,4 @@ export interface AdCampaign {
   impressions: number;
   clicks: number;
   leads: number;
-}
-
-export interface MetaAdsActionResult {
-  success: boolean;
-  detail: string;
 }

@@ -4,37 +4,39 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { AI_MODULE_IDS, createLogger } from "@mkh/shared";
 import { getRepository } from "@mkh/database";
-import { MODULE_REGISTRY } from "@mkh/ai-engine";
+import { EMPLOYEE_REGISTRY } from "@mkh/ai-engine";
 
 const logger = createLogger("mcp-server");
 
 /**
- * Read-only MCP server exposing the AI Operating System's current state to
- * any MCP client (Claude Desktop, Claude Code, etc). Deliberately has no
- * write tools yet — approving/executing Meta Ads actions stays behind the
- * dashboard's approval workflow (@mkh/security) until that's explicitly
- * extended to MCP.
+ * Read-only MCP server exposing the AI Workforce Engine's current state to
+ * any MCP client (Claude Desktop, Claude Code, MK Connect, etc). No write
+ * tools yet — approving Meta Ads actions stays behind the approval
+ * workflow in @mkh/ai-engine (proposeAction/decideOnApproval) until that's
+ * explicitly extended to MCP or MK Connect.
  */
 const server = new McpServer({
   name: "mkh-ai-os",
-  version: "0.1.0",
+  version: "0.2.0",
 });
 
 server.tool(
   "list_ai_status",
-  "List every AI module (digital employee) with its latest run status and summary.",
+  "List every AI employee with its latest run status and summary.",
   {},
   async () => {
     const repo = getRepository();
     const statuses = await Promise.all(
       AI_MODULE_IDS.map(async (id) => {
         const report = await repo.getLatestReport(id);
-        const module = MODULE_REGISTRY[id];
+        const employee = EMPLOYEE_REGISTRY[id];
         return {
           moduleId: id,
-          name: module.name,
-          description: module.description,
+          name: employee.name,
+          role: employee.role,
+          description: employee.description,
           lastRunAt: report?.generatedAt ?? null,
+          lastCadence: report?.cadence ?? null,
           lastStatus: report?.status ?? "never_run",
           lastSummary: report?.summary ?? null,
         };
@@ -46,7 +48,7 @@ server.tool(
 
 server.tool(
   "get_latest_report",
-  "Get the full latest AIReport (summary + structured data) for one AI module.",
+  "Get the full latest AIReport (summary + structured data) for one AI employee.",
   { moduleId: z.enum(AI_MODULE_IDS) },
   async ({ moduleId }) => {
     const report = await getRepository().getLatestReport(moduleId);
@@ -56,7 +58,7 @@ server.tool(
 
 server.tool(
   "list_recent_reports",
-  "List recent AIReports, optionally filtered to one module.",
+  "List recent AIReports, optionally filtered to one employee.",
   { moduleId: z.enum(AI_MODULE_IDS).optional(), limit: z.number().int().min(1).max(100).default(10) },
   async ({ moduleId, limit }) => {
     const reports = await getRepository().listReports(moduleId, limit);
@@ -66,7 +68,7 @@ server.tool(
 
 server.tool(
   "list_pending_approvals",
-  "List Meta Ads actions currently awaiting Owner approval (Stage 2 approval workflow).",
+  "List Meta Ads actions currently awaiting Owner approval (proposeAction/decideOnApproval workflow).",
   {},
   async () => {
     const approvals = await getRepository().listApprovals("pending");
@@ -76,7 +78,7 @@ server.tool(
 
 server.tool(
   "list_recent_notifications",
-  "List recent notifications raised by the AI modules for the Owner/Dir Ops/Markom.",
+  "List recent notifications raised by the AI employees for the Owner/Dir Ops/Markom.",
   { limit: z.number().int().min(1).max(100).default(20) },
   async ({ limit }) => {
     const notifications = await getRepository().listNotifications(limit);
@@ -85,12 +87,22 @@ server.tool(
 );
 
 server.tool(
-  "list_action_logs",
-  "List the audit log of Meta Ads actions actually executed after Owner approval.",
-  { limit: z.number().int().min(1).max(100).default(20) },
-  async ({ limit }) => {
-    const logs = await getRepository().listActionLogs(limit);
-    return { content: [{ type: "text", text: JSON.stringify(logs, null, 2) }] };
+  "list_knowledge_base",
+  "List Marketing Intelligence's accumulated knowledge base — viral content, competitor activity, and trend signals discovered over time, deduplicated with a timesSeen count.",
+  { category: z.string().optional(), limit: z.number().int().min(1).max(500).default(50) },
+  async ({ category, limit }) => {
+    const items = await getRepository().listKnowledgeItems({ moduleId: "marketing-intelligence", category }, limit);
+    return { content: [{ type: "text", text: JSON.stringify(items, null, 2) }] };
+  },
+);
+
+server.tool(
+  "list_work_log",
+  "List the granular SOP step trail (e.g. \"Started\", \"Research Completed\", \"Saved Memory\", \"Finished\") for one employee or one specific run.",
+  { moduleId: z.enum(AI_MODULE_IDS).optional(), runId: z.string().optional(), limit: z.number().int().min(1).max(200).default(50) },
+  async ({ moduleId, runId, limit }) => {
+    const entries = await getRepository().listWorkLog({ moduleId, runId }, limit);
+    return { content: [{ type: "text", text: JSON.stringify(entries, null, 2) }] };
   },
 );
 

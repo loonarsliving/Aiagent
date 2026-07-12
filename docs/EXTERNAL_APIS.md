@@ -6,14 +6,15 @@ gets wired in (tracked per connector in `docs/CONNECTORS.md`).
 
 | API | Purpose | Auth method | Docs |
 |---|---|---|---|
-| Meta Graph API (Instagram) | Read IG account/post insights for Marketing Strategist AI | OAuth 2.0, long-lived Page access token | developers.facebook.com/docs/instagram-api |
-| Meta Marketing API | Read Meta Ads campaign performance; execute budget/status changes (Stage 2 only) | OAuth 2.0, System User token with `ads_read` / `ads_management` | developers.facebook.com/docs/marketing-apis |
-| TikTok for Business API | Read TikTok account/post insights | OAuth 2.0, business account token | business-api.tiktok.com/portal/docs |
+| Meta Graph API (Instagram) | Read viral content/insights for Marketing Intelligence AI | OAuth 2.0, long-lived Page access token | developers.facebook.com/docs/instagram-api |
+| Google Trends (or a trend-data vendor) | Google/property/villa/skincare trend research for Marketing Intelligence AI | Vendor-dependent | trends.google.com |
+| Meta Marketing API | Read Meta Ads campaign performance for Meta Ads AI (read-only — no execute/publish path exists yet) | OAuth 2.0, System User token with `ads_read` | developers.facebook.com/docs/marketing-apis |
+| TikTok for Business API | Read TikTok viral content/insights for Marketing Intelligence AI | OAuth 2.0, business account token | business-api.tiktok.com/portal/docs |
 | WhatsApp Business Cloud API | Send notifications to Owner/Dir Ops/Markom | Meta Business app, permanent access token | developers.facebook.com/docs/whatsapp/cloud-api |
 | Telegram Bot API | Send notifications | Bot token (BotFather) | core.telegram.org/bots/api |
 | Email provider (Resend / SendGrid / etc.) | Send email notifications & reports | Provider API key | provider-specific |
 | Web Push / FCM | Push notifications | VAPID keys / FCM server key | web.dev/push-notifications, firebase.google.com/docs/cloud-messaging |
-| Supabase | Persistence (reports, approvals, logs, notifications, schedule) | Project URL + service role key (server-side only) | supabase.com/docs |
+| Supabase | Persistence (reports, approvals, work log, knowledge base, notifications, schedule) | Project URL + service role key (server-side only) | supabase.com/docs |
 | MK Connect (internal, not yet built) | Read sales targets / finance transactions from the production ERP | Internal API key, scoped read-only | to be defined when Owner authorizes integration |
 
 ## Handling secrets

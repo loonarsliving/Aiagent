@@ -1,6 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type {
-  ActionLogEntry,
   AIModuleId,
   AIReport,
   ApprovalRequest,
@@ -8,17 +7,31 @@ import type {
   NotificationMessage,
   ScheduleEntry,
   ScheduleRunRecord,
+  TaskCadence,
+  WorkLogEntry,
 } from "@mkh/shared";
 import type { Repository } from "../repository";
-import type { FinanceSnapshot, SalesSnapshot } from "../domain-types";
-import { DEFAULT_SCHEDULE, seedFinanceSnapshot, seedSalesSnapshot } from "../seed-data";
+import type {
+  FinanceSnapshot,
+  KnowledgeItem,
+  MarkomChecklistCompletionState,
+  SalesSnapshot,
+} from "../domain-types";
+import {
+  DEFAULT_SCHEDULE,
+  seedFinanceSnapshot,
+  seedMarkomChecklistCompletionState,
+  seedSalesSnapshot,
+} from "../seed-data";
+
+type Row = Record<string, unknown>;
 
 /**
  * DATA_MODE=supabase implementation. Tables mirror supabase/migrations/.
- * Sales/finance "source of truth" reads still fall back to the same seed
- * fixtures as InMemoryRepository until a real ERP sync (via MK Connect)
- * populates the equivalent Supabase tables — this keeps module logic
- * identical across both data modes.
+ * Sales/finance/Markom-completion "source of truth" reads still fall back
+ * to the same seed fixtures as InMemoryRepository until a real ERP sync
+ * (via MK Connect) populates the equivalent Supabase tables — this keeps
+ * employee logic identical across both data modes.
  */
 export class SupabaseRepository implements Repository {
   private readonly client: SupabaseClient;
@@ -27,9 +40,15 @@ export class SupabaseRepository implements Repository {
     this.client = createClient(url, serviceKey);
   }
 
-  private async insert<T>(table: string, row: Record<string, unknown>): Promise<T> {
+  private async insert<T>(table: string, row: Row): Promise<T> {
     const { data, error } = await this.client.from(table).insert(row).select().single();
     if (error) throw new Error(`Supabase insert into ${table} failed: ${error.message}`);
+    return data as T;
+  }
+
+  private async upsert<T>(table: string, row: Row, conflictKey: string): Promise<T> {
+    const { data, error } = await this.client.from(table).upsert(row, { onConflict: conflictKey }).select().single();
+    if (error) throw new Error(`Supabase upsert into ${table} failed: ${error.message}`);
     return data as T;
   }
 
@@ -37,6 +56,7 @@ export class SupabaseRepository implements Repository {
     await this.insert("reports", {
       id: report.id,
       module_id: report.moduleId,
+      cadence: report.cadence,
       generated_at: report.generatedAt,
       status: report.status,
       summary: report.summary,
@@ -66,6 +86,18 @@ export class SupabaseRepository implements Repository {
     return (data ?? []).map(mapReportRow);
   }
 
+  async listRecentReports(moduleId: AIModuleId, cadence: TaskCadence, limit: number): Promise<AIReport[]> {
+    const { data, error } = await this.client
+      .from("reports")
+      .select("*")
+      .eq("module_id", moduleId)
+      .eq("cadence", cadence)
+      .order("generated_at", { ascending: false })
+      .limit(limit);
+    if (error) throw new Error(`Supabase query failed: ${error.message}`);
+    return (data ?? []).map(mapReportRow).reverse();
+  }
+
   async saveApproval(approval: ApprovalRequest): Promise<ApprovalRequest> {
     await this.insert("approvals", toApprovalRow(approval));
     return approval;
@@ -91,37 +123,6 @@ export class SupabaseRepository implements Repository {
     return approval;
   }
 
-  async saveActionLog(entry: ActionLogEntry): Promise<ActionLogEntry> {
-    await this.insert("action_logs", {
-      id: entry.id,
-      approval_id: entry.approvalId,
-      action_type: entry.actionType,
-      campaign_id: entry.campaignId,
-      executed_at: entry.executedAt,
-      result: entry.result,
-      detail: entry.detail,
-    });
-    return entry;
-  }
-
-  async listActionLogs(limit = 50): Promise<ActionLogEntry[]> {
-    const { data, error } = await this.client
-      .from("action_logs")
-      .select("*")
-      .order("executed_at", { ascending: false })
-      .limit(limit);
-    if (error) throw new Error(`Supabase query failed: ${error.message}`);
-    return (data ?? []).map((row: Record<string, any>) => ({
-      id: row.id,
-      approvalId: row.approval_id,
-      actionType: row.action_type,
-      campaignId: row.campaign_id,
-      executedAt: row.executed_at,
-      result: row.result,
-      detail: row.detail,
-    }));
-  }
-
   async saveNotification(notification: NotificationMessage): Promise<NotificationMessage> {
     await this.insert("notifications", {
       id: notification.id,
@@ -143,15 +144,15 @@ export class SupabaseRepository implements Repository {
       .order("created_at", { ascending: false })
       .limit(limit);
     if (error) throw new Error(`Supabase query failed: ${error.message}`);
-    return (data ?? []).map((row: Record<string, any>) => ({
-      id: row.id,
-      channel: row.channel,
-      severity: row.severity,
-      title: row.title,
-      body: row.body,
-      target: row.target ?? undefined,
-      sourceModuleId: row.source_module_id ?? undefined,
-      createdAt: row.created_at,
+    return (data ?? []).map((row: Row) => ({
+      id: row.id as string,
+      channel: row.channel as NotificationMessage["channel"],
+      severity: row.severity as NotificationMessage["severity"],
+      title: row.title as string,
+      body: row.body as string,
+      target: (row.target as string | null) ?? undefined,
+      sourceModuleId: (row.source_module_id as AIModuleId | null) ?? undefined,
+      createdAt: row.created_at as string,
     }));
   }
 
@@ -159,12 +160,15 @@ export class SupabaseRepository implements Repository {
     const { data, error } = await this.client.from("schedule_entries").select("*");
     if (error) throw new Error(`Supabase query failed: ${error.message}`);
     if (!data || data.length === 0) return DEFAULT_SCHEDULE;
-    return data.map((row: Record<string, any>) => ({
-      id: row.id,
-      moduleId: row.module_id,
-      time: row.time,
-      label: row.label,
-      enabled: row.enabled,
+    return data.map((row: Row) => ({
+      id: row.id as string,
+      moduleId: row.module_id as AIModuleId,
+      cadence: row.cadence as TaskCadence,
+      time: row.time as string,
+      dayOfWeek: (row.day_of_week as number | null) ?? undefined,
+      dayOfMonth: (row.day_of_month as number | null) ?? undefined,
+      label: row.label as string,
+      enabled: row.enabled as boolean,
     }));
   }
 
@@ -172,6 +176,7 @@ export class SupabaseRepository implements Repository {
     await this.insert("schedule_runs", {
       id: run.id,
       module_id: run.moduleId,
+      cadence: run.cadence,
       scheduled_time: run.scheduledTime,
       started_at: run.startedAt,
       finished_at: run.finishedAt ?? null,
@@ -193,15 +198,7 @@ export class SupabaseRepository implements Repository {
       .select()
       .single();
     if (error) throw new Error(`Supabase update failed: ${error.message}`);
-    return {
-      id: data.id,
-      moduleId: data.module_id,
-      scheduledTime: data.scheduled_time,
-      startedAt: data.started_at,
-      finishedAt: data.finished_at ?? undefined,
-      status: data.status,
-      reportId: data.report_id ?? undefined,
-    };
+    return mapScheduleRunRow(data);
   }
 
   async listScheduleRuns(limit = 50): Promise<ScheduleRunRecord[]> {
@@ -211,19 +208,81 @@ export class SupabaseRepository implements Repository {
       .order("started_at", { ascending: false })
       .limit(limit);
     if (error) throw new Error(`Supabase query failed: ${error.message}`);
-    return (data ?? []).map((row: Record<string, any>) => ({
-      id: row.id,
-      moduleId: row.module_id,
-      scheduledTime: row.scheduled_time,
-      startedAt: row.started_at,
-      finishedAt: row.finished_at ?? undefined,
-      status: row.status,
-      reportId: row.report_id ?? undefined,
+    return (data ?? []).map(mapScheduleRunRow);
+  }
+
+  async logWorkStep(entry: WorkLogEntry): Promise<WorkLogEntry> {
+    await this.insert("work_log", {
+      id: entry.id,
+      module_id: entry.moduleId,
+      run_id: entry.runId,
+      cadence: entry.cadence,
+      step: entry.step,
+      status: entry.status,
+      detail: entry.detail ?? null,
+      logged_at: entry.loggedAt,
+    });
+    return entry;
+  }
+
+  async listWorkLog(filter: { moduleId?: AIModuleId; runId?: string }, limit = 100): Promise<WorkLogEntry[]> {
+    let query = this.client.from("work_log").select("*").order("logged_at", { ascending: false }).limit(limit);
+    if (filter.moduleId) query = query.eq("module_id", filter.moduleId);
+    if (filter.runId) query = query.eq("run_id", filter.runId);
+    const { data, error } = await query;
+    if (error) throw new Error(`Supabase query failed: ${error.message}`);
+    return (data ?? []).map((row: Row) => ({
+      id: row.id as string,
+      moduleId: row.module_id as AIModuleId,
+      runId: row.run_id as string,
+      cadence: row.cadence as TaskCadence,
+      step: row.step as string,
+      status: row.status as WorkLogEntry["status"],
+      detail: (row.detail as string | null) ?? undefined,
+      loggedAt: row.logged_at as string,
     }));
   }
 
-  // Sales/finance tables are populated once a real ERP sync exists; until
-  // then both data modes serve the same seed fixtures.
+  async upsertKnowledgeItem(item: KnowledgeItem): Promise<KnowledgeItem> {
+    await this.upsert(
+      "knowledge_items",
+      {
+        id: item.id,
+        module_id: item.moduleId,
+        category: item.category,
+        title: item.title,
+        source_url: item.sourceUrl ?? null,
+        first_seen_at: item.firstSeenAt,
+        last_seen_at: item.lastSeenAt,
+        times_seen: item.timesSeen,
+        metadata: item.metadata,
+      },
+      "id",
+    );
+    return item;
+  }
+
+  async listKnowledgeItems(filter: { moduleId?: AIModuleId; category?: string }, limit = 200): Promise<KnowledgeItem[]> {
+    let query = this.client.from("knowledge_items").select("*").order("last_seen_at", { ascending: false }).limit(limit);
+    if (filter.moduleId) query = query.eq("module_id", filter.moduleId);
+    if (filter.category) query = query.eq("category", filter.category);
+    const { data, error } = await query;
+    if (error) throw new Error(`Supabase query failed: ${error.message}`);
+    return (data ?? []).map((row: Row) => ({
+      id: row.id as string,
+      moduleId: row.module_id as AIModuleId,
+      category: row.category as string,
+      title: row.title as string,
+      sourceUrl: (row.source_url as string | null) ?? undefined,
+      firstSeenAt: row.first_seen_at as string,
+      lastSeenAt: row.last_seen_at as string,
+      timesSeen: row.times_seen as number,
+      metadata: (row.metadata as Record<string, unknown>) ?? {},
+    }));
+  }
+
+  // Sales/finance/checklist-completion tables are populated once a real ERP
+  // sync exists; until then both data modes serve the same seed fixtures.
   async getSalesSnapshot(): Promise<SalesSnapshot> {
     return seedSalesSnapshot();
   }
@@ -231,21 +290,39 @@ export class SupabaseRepository implements Repository {
   async getFinanceSnapshot(): Promise<FinanceSnapshot> {
     return seedFinanceSnapshot();
   }
+
+  async getMarkomChecklistCompletionState(): Promise<MarkomChecklistCompletionState> {
+    return seedMarkomChecklistCompletionState();
+  }
 }
 
-function mapReportRow(row: Record<string, any>): AIReport {
+function mapReportRow(row: Row): AIReport {
   return {
-    id: row.id,
-    moduleId: row.module_id,
-    generatedAt: row.generated_at,
-    status: row.status,
-    summary: row.summary,
+    id: row.id as string,
+    moduleId: row.module_id as AIModuleId,
+    cadence: row.cadence as TaskCadence,
+    generatedAt: row.generated_at as string,
+    status: row.status as AIReport["status"],
+    summary: row.summary as string,
     data: row.data,
-    error: row.error ?? undefined,
+    error: (row.error as string | null) ?? undefined,
   };
 }
 
-function toApprovalRow(approval: ApprovalRequest) {
+function mapScheduleRunRow(row: Row): ScheduleRunRecord {
+  return {
+    id: row.id as string,
+    moduleId: row.module_id as AIModuleId,
+    cadence: row.cadence as TaskCadence,
+    scheduledTime: row.scheduled_time as string,
+    startedAt: row.started_at as string,
+    finishedAt: (row.finished_at as string | null) ?? undefined,
+    status: row.status as ScheduleRunRecord["status"],
+    reportId: (row.report_id as string | null) ?? undefined,
+  };
+}
+
+function toApprovalRow(approval: ApprovalRequest): Row {
   return {
     id: approval.id,
     module_id: approval.moduleId,
@@ -261,18 +338,18 @@ function toApprovalRow(approval: ApprovalRequest) {
   };
 }
 
-function mapApprovalRow(row: Record<string, any>): ApprovalRequest {
+function mapApprovalRow(row: Row): ApprovalRequest {
   return {
-    id: row.id,
-    moduleId: row.module_id,
-    actionType: row.action_type,
-    campaignId: row.campaign_id,
-    campaignName: row.campaign_name,
-    reason: row.reason,
-    proposedChange: row.proposed_change,
-    status: row.status,
-    requestedAt: row.requested_at,
-    decidedAt: row.decided_at ?? undefined,
-    decidedBy: row.decided_by ?? undefined,
+    id: row.id as string,
+    moduleId: row.module_id as AIModuleId,
+    actionType: row.action_type as ApprovalRequest["actionType"],
+    campaignId: row.campaign_id as string,
+    campaignName: row.campaign_name as string,
+    reason: row.reason as string,
+    proposedChange: row.proposed_change as Record<string, unknown>,
+    status: row.status as ApprovalStatus,
+    requestedAt: row.requested_at as string,
+    decidedAt: (row.decided_at as string | null) ?? undefined,
+    decidedBy: (row.decided_by as string | null) ?? undefined,
   };
 }

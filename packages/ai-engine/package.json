@@ -13,6 +13,7 @@
     "@mkh/database": "workspace:*",
     "@mkh/security": "workspace:*",
     "@mkh/connectors": "workspace:*",
-    "@mkh/notifications": "workspace:*"
+    "@mkh/notifications": "workspace:*",
+    "@mkh/memory": "workspace:*"
   }
 }

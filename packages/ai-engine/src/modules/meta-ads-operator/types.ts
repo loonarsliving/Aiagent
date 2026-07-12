@@ -28,4 +28,22 @@ export interface CampaignRecommendation {
 export interface MetaAdsAnalysisData {
   campaigns: CampaignMetrics[];
   recommendations: CampaignRecommendation[];
+  /** ApprovalRequest ids created this run via workflow.proposeAction — one per actionable recommendation. */
+  proposedApprovalIds: string[];
+}
+
+export interface WeeklyCampaignComparison {
+  periodLabel: string;
+  daysAggregated: number;
+  totalActionableRecommendations: number;
+  /** Campaign names that needed action on more than one day this week — worth a closer look. */
+  recurringCampaignIssues: string[];
+}
+
+export interface MonthlyAdsRecap {
+  periodLabel: string;
+  daysAggregated: number;
+  totalApprovalsProposed: number;
+  approvalOutcomes: { approved: number; rejected: number; pending: number };
+  note: string;
 }

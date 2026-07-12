@@ -18,3 +18,19 @@ export interface SalesSupervisionData {
   reps: RepProgress[];
   laggingReps: RepProgress[];
 }
+
+export interface WeeklyPaceCheck {
+  periodLabel: string;
+  daysAggregated: number;
+  avgOverallProgressPct: number;
+  progressTrend: "improving" | "flat" | "declining";
+  chronicLaggards: string[];
+}
+
+export interface MonthlyTargetRecap {
+  periodLabel: string;
+  daysAggregated: number;
+  finalOverallProgressPct: number;
+  totalLaggingIncidents: number;
+  note: string;
+}

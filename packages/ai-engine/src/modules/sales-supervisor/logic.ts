@@ -1,5 +1,6 @@
 import type { SalesRepProgress } from "@mkh/database";
-import type { RepProgress, RepStatus, SalesSupervisionData } from "./types";
+import type { AIReport } from "@mkh/shared";
+import type { MonthlyTargetRecap, RepProgress, RepStatus, SalesSupervisionData, WeeklyPaceCheck } from "./types";
 
 export const LAGGING_PROGRESS_THRESHOLD_PCT = 60;
 export const LAGGING_INACTIVITY_DAYS = 4;
@@ -52,4 +53,43 @@ export function buildSupervisionData(periodLabel: string, reps: SalesRepProgress
     reps: progress,
     laggingReps: progress.filter((r) => r.status === "lagging"),
   };
+}
+
+export function buildWeeklyPaceCheck(periodLabel: string, dailyReports: AIReport<SalesSupervisionData>[]): WeeklyPaceCheck {
+  if (dailyReports.length === 0) {
+    return { periodLabel, daysAggregated: 0, avgOverallProgressPct: 0, progressTrend: "flat", chronicLaggards: [] };
+  }
+
+  const avgOverallProgressPct = Number(
+    (dailyReports.reduce((sum, r) => sum + (r.data?.overallProgressPct ?? 0), 0) / dailyReports.length).toFixed(1),
+  );
+
+  const first = dailyReports[0]!.data?.overallProgressPct ?? 0;
+  const last = dailyReports[dailyReports.length - 1]!.data?.overallProgressPct ?? 0;
+  const delta = last - first;
+  const progressTrend = delta > 1 ? "improving" : delta < -1 ? "declining" : "flat";
+
+  const laggingCounts = new Map<string, number>();
+  for (const report of dailyReports) {
+    for (const rep of report.data?.laggingReps ?? []) {
+      laggingCounts.set(rep.name, (laggingCounts.get(rep.name) ?? 0) + 1);
+    }
+  }
+  const chronicLaggards = Array.from(laggingCounts.entries())
+    .filter(([, count]) => count > dailyReports.length / 2)
+    .map(([name]) => name);
+
+  return { periodLabel, daysAggregated: dailyReports.length, avgOverallProgressPct, progressTrend, chronicLaggards };
+}
+
+export function buildMonthlyTargetRecap(periodLabel: string, dailyReports: AIReport<SalesSupervisionData>[]): MonthlyTargetRecap {
+  const finalOverallProgressPct = dailyReports.length > 0 ? dailyReports[dailyReports.length - 1]!.data?.overallProgressPct ?? 0 : 0;
+  const totalLaggingIncidents = dailyReports.reduce((sum, r) => sum + (r.data?.laggingReps.length ?? 0), 0);
+
+  const note =
+    dailyReports.length === 0
+      ? "Belum ada laporan harian bulan ini untuk direkap."
+      : `Progress akhir bulan ${finalOverallProgressPct}%, tercatat ${totalLaggingIncidents} insiden keterlambatan follow-up sepanjang bulan.`;
+
+  return { periodLabel, daysAggregated: dailyReports.length, finalOverallProgressPct, totalLaggingIncidents, note };
 }

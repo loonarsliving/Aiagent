@@ -1,5 +1,4 @@
 import type {
-  ActionLogEntry,
   AIModuleId,
   AIReport,
   ApprovalRequest,
@@ -7,10 +6,22 @@ import type {
   NotificationMessage,
   ScheduleEntry,
   ScheduleRunRecord,
+  TaskCadence,
+  WorkLogEntry,
 } from "@mkh/shared";
 import type { Repository } from "../repository";
-import type { FinanceSnapshot, SalesSnapshot } from "../domain-types";
-import { DEFAULT_SCHEDULE, seedFinanceSnapshot, seedSalesSnapshot } from "../seed-data";
+import type {
+  FinanceSnapshot,
+  KnowledgeItem,
+  MarkomChecklistCompletionState,
+  SalesSnapshot,
+} from "../domain-types";
+import {
+  DEFAULT_SCHEDULE,
+  seedFinanceSnapshot,
+  seedMarkomChecklistCompletionState,
+  seedSalesSnapshot,
+} from "../seed-data";
 
 /**
  * Default repository (DATA_MODE=dummy). Holds everything in process memory,
@@ -20,12 +31,14 @@ import { DEFAULT_SCHEDULE, seedFinanceSnapshot, seedSalesSnapshot } from "../see
 export class InMemoryRepository implements Repository {
   private reports: AIReport[] = [];
   private approvals: ApprovalRequest[] = [];
-  private actionLogs: ActionLogEntry[] = [];
   private notifications: NotificationMessage[] = [];
   private scheduleRuns: ScheduleRunRecord[] = [];
+  private workLog: WorkLogEntry[] = [];
+  private knowledgeItems = new Map<string, KnowledgeItem>();
   private readonly schedule: ScheduleEntry[] = DEFAULT_SCHEDULE;
   private readonly salesSnapshot: SalesSnapshot = seedSalesSnapshot();
   private readonly financeSnapshot: FinanceSnapshot = seedFinanceSnapshot();
+  private readonly markomChecklistCompletion: MarkomChecklistCompletionState = seedMarkomChecklistCompletionState();
 
   async saveReport(report: AIReport): Promise<AIReport> {
     this.reports.unshift(report);
@@ -39,6 +52,11 @@ export class InMemoryRepository implements Repository {
   async listReports(moduleId?: AIModuleId, limit = 50): Promise<AIReport[]> {
     const filtered = moduleId ? this.reports.filter((r) => r.moduleId === moduleId) : this.reports;
     return filtered.slice(0, limit);
+  }
+
+  async listRecentReports(moduleId: AIModuleId, cadence: TaskCadence, limit: number): Promise<AIReport[]> {
+    const filtered = this.reports.filter((r) => r.moduleId === moduleId && r.cadence === cadence);
+    return filtered.slice(0, limit).reverse();
   }
 
   async saveApproval(approval: ApprovalRequest): Promise<ApprovalRequest> {
@@ -63,15 +81,6 @@ export class InMemoryRepository implements Repository {
       this.approvals[idx] = approval;
     }
     return approval;
-  }
-
-  async saveActionLog(entry: ActionLogEntry): Promise<ActionLogEntry> {
-    this.actionLogs.unshift(entry);
-    return entry;
-  }
-
-  async listActionLogs(limit = 50): Promise<ActionLogEntry[]> {
-    return this.actionLogs.slice(0, limit);
   }
 
   async saveNotification(notification: NotificationMessage): Promise<NotificationMessage> {
@@ -105,11 +114,39 @@ export class InMemoryRepository implements Repository {
     return this.scheduleRuns.slice(0, limit);
   }
 
+  async logWorkStep(entry: WorkLogEntry): Promise<WorkLogEntry> {
+    this.workLog.unshift(entry);
+    return entry;
+  }
+
+  async listWorkLog(filter: { moduleId?: AIModuleId; runId?: string }, limit = 100): Promise<WorkLogEntry[]> {
+    const filtered = this.workLog.filter(
+      (e) => (!filter.moduleId || e.moduleId === filter.moduleId) && (!filter.runId || e.runId === filter.runId),
+    );
+    return filtered.slice(0, limit);
+  }
+
+  async upsertKnowledgeItem(item: KnowledgeItem): Promise<KnowledgeItem> {
+    this.knowledgeItems.set(item.id, item);
+    return item;
+  }
+
+  async listKnowledgeItems(filter: { moduleId?: AIModuleId; category?: string }, limit = 200): Promise<KnowledgeItem[]> {
+    const all = Array.from(this.knowledgeItems.values())
+      .filter((i) => (!filter.moduleId || i.moduleId === filter.moduleId) && (!filter.category || i.category === filter.category))
+      .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
+    return all.slice(0, limit);
+  }
+
   async getSalesSnapshot(): Promise<SalesSnapshot> {
     return this.salesSnapshot;
   }
 
   async getFinanceSnapshot(): Promise<FinanceSnapshot> {
     return this.financeSnapshot;
+  }
+
+  async getMarkomChecklistCompletionState(): Promise<MarkomChecklistCompletionState> {
+    return this.markomChecklistCompletion;
   }
 }

@@ -1,115 +1,181 @@
-# Architecture
+# Architecture — AI Workforce Engine
 
 ## Overview
 
-mkh-ai-os is a pnpm/Turborepo monorepo: one Next.js app (`apps/dashboard`)
-and eight independent packages implementing Clean Architecture layers. Every
-package depends only on `@mkh/shared` and the layers below it — never
-sideways into the dashboard — so `ai-engine`, `scheduler`, and
-`notifications` can be lifted into a standalone worker process later without
-touching application code.
+mkh-ai-os is a **backend service**, not an application with its own UI.
+Every AI is modeled as a digital employee: an id, a role, a declared SOP
+(daily/weekly/monthly), persistent memory where relevant, and a granular
+work log. `apps/dashboard` exists only as a frozen, read-only internal
+debug viewer built during an earlier phase — it is not part of the active
+roadmap. All future UI lives in **MK Connect**; this repo's job is to be
+ready for MK Connect to call into, once the Owner authorizes integration.
 
 ```
-apps/dashboard  ──┐
-                   ├─▶ @mkh/ai-engine ──▶ @mkh/connectors
-packages/scheduler ┘        │        └─▶ @mkh/notifications ──▶ @mkh/database
-                             ├─▶ @mkh/security
-                             └─▶ @mkh/database ──▶ @mkh/shared
-packages/mcp-server ────────────────────────────────────────────┘
+packages/scheduler ──▶ packages/ai-engine (6 AIEmployee implementations)
+                              │
+                              ├─▶ packages/memory ──▶ packages/database
+                              ├─▶ packages/security
+                              ├─▶ packages/notifications ──▶ packages/database
+                              ├─▶ packages/connectors (ports + mock adapters)
+                              └─▶ packages/database ──▶ packages/shared
+
+packages/mcp-server ──▶ packages/database, packages/ai-engine (read-only)
 ```
 
-Why a monorepo instead of one Next.js folder: the brief requires the AI
-modules to work as **background workers**, not request-scoped chatbot
-logic. Keeping `ai-engine`/`scheduler`/`notifications`/`connectors` as
-separate packages means:
+## Why every package depends only downward
 
-1. They have zero dependency on Next.js and can run standalone (`pnpm
-   scheduler:dev`, `pnpm mcp:dev`) or inside API routes.
-2. Vercel serverless functions have execution-time limits; if a module ever
-   needs a long-running job, only the entry point changes (e.g. a dedicated
-   worker service), not the module logic.
-3. Clear boundaries mirror the brief's explicit ask: "Pisahkan: AI Engine /
-   Scheduler / Notification / Connectors / Dashboard / Logs / Config /
-   Security."
+`ai-engine`, `scheduler`, `memory`, and `notifications` have zero
+dependency on any HTTP framework — they're plain TypeScript that runs the
+same way whether invoked by `pnpm scheduler:dev` (a bare Node process),
+a future MK Connect webhook, or a test file. This is what "backend
+service, not an app" means in practice: nothing in the employee logic
+knows or cares how it was triggered.
 
-## Layers
+## The employee model
 
-| Package | Responsibility |
-|---|---|
-| `@mkh/shared` | Cross-cutting types (`AIReport`, `NotificationMessage`, ...), env config loader, structured logger, id generator |
-| `@mkh/database` | `Repository` interface + `InMemoryRepository` (default) + `SupabaseRepository`; the only layer allowed to know about persistence |
-| `@mkh/security` | RBAC roles, the Meta Ads approval-gate state machine, audit-log entry builder |
-| `@mkh/connectors` | Mocked external integrations (Instagram, TikTok, Meta Ads, MK Connect guardrail) — the only layer allowed to "know" about third-party APIs |
-| `@mkh/notifications` | `NotificationChannel` interface, dummy channel (default) + WhatsApp/Telegram/Email/Push adapter skeletons |
-| `@mkh/ai-engine` | `AIModule` interface, `AgentRunner`, the five AI modules, and the module registry |
-| `@mkh/scheduler` | Time-slot → module registry, local `node-cron` runner, shared executor used by Vercel Cron routes |
-| `@mkh/mcp-server` | Read-only MCP server exposing system state to Claude/MCP clients |
-| `apps/dashboard` | Next.js UI (Server Components read the repository directly) + `/api/cron/[moduleId]` |
+Every employee implements `AIEmployee<TData>`
+(`packages/ai-engine/src/core/ai-employee.ts`):
 
-## Data flow (one module's daily run)
-
-```mermaid
-sequenceDiagram
-    participant Cron as Vercel Cron / node-cron
-    participant API as /api/cron/[moduleId]
-    participant Exec as scheduler.executor
-    participant Mod as ai-engine module
-    participant Conn as connectors (mocked)
-    participant DB as database.Repository
-    participant Notif as notifications
-
-    Cron->>API: GET (Bearer CRON_SECRET)
-    API->>Exec: runScheduledModule(moduleId, time)
-    Exec->>DB: saveScheduleRun(status=running)
-    Exec->>Mod: runModule(module, ctx)
-    Mod->>Conn: fetch mocked data (IG/TikTok/Ads/...)
-    Mod->>DB: (sales/finance) getSalesSnapshot/getFinanceSnapshot
-    Mod->>Notif: notify() when something needs attention
-    Mod-->>Exec: AIReport
-    Exec->>DB: saveReport(report)
-    Exec->>DB: updateScheduleRun(status, reportId)
+```ts
+interface AIEmployee<TData> {
+  id: AIModuleId;
+  name: string;          // "Marketing Intelligence AI"
+  role: string;           // "Kepala Riset Marketing" — the job title
+  description: string;
+  sop: EmployeeSOP;        // declared daily/weekly/monthly steps, see docs/SOP.md
+  runDaily(context, log): Promise<AIReport<TData>>;   // mandatory
+  runWeekly?(context, log): Promise<AIReport<TData>>;  // optional
+  runMonthly?(context, log): Promise<AIReport<TData>>; // optional
+}
 ```
 
-## Meta Ads Stage 2 (approval-gated actions)
+`runEmployeeTask(employee, cadence, context)`
+(`packages/ai-engine/src/core/agent-runner.ts`) is the one entry point that
+runs a task, persists the resulting `AIReport`, and — critically — always
+returns a report even if the task method throws, so callers never handle a
+rejected promise. Every employee also declares all three cadences today
+(see each module's `module.ts`); weekly/monthly implementations share
+`aggregateRecentReports(moduleId, days)` to summarize a real window of
+daily reports rather than re-deriving from scratch, so they stay genuine
+without needing 18 fully bespoke aggregation routines.
+
+## Work log — the SOP step trail
+
+Every task method receives a `WorkLogger`
+(`packages/ai-engine/src/core/work-logger.ts`) and calls
+`log.step("Research Completed", detail)` at each SOP milestone. Each call
+does two things: writes a structured console log line, and persists a
+`WorkLogEntry` row (`packages/database`) tied to the run via `runId`. This
+is what makes "08:00 Started / 08:12 Research Completed / 08:15 Saved
+Memory / 08:20 Finished" a real, queryable trail instead of a narrative —
+query it via the MCP server's `list_work_log` tool or
+`Repository.listWorkLog()` directly.
+
+## Memory / knowledge base
+
+Marketing Intelligence is the one employee with persistent, cumulative
+memory. The split mirrors how `@mkh/security` already layers business
+rules over `@mkh/database`'s plain persistence:
+
+- `@mkh/database` — dumb storage: `upsertKnowledgeItem`, `listKnowledgeItems`.
+- `@mkh/memory` — the behavior: `mergeKnowledgeItem` (bump `timesSeen`/
+  `lastSeenAt` on rediscovery instead of duplicating) and the
+  `KnowledgeBase` class (`remember()`, `recall()`, `stats()`).
+
+Concretely: day 1's research finds 50 signals → 50 new `KnowledgeItem`
+rows. Day 2 rediscovers 30 of those plus 20 new ones → the 30 get
+`timesSeen: 2`, `lastSeenAt` refreshed; only the 20 genuinely new ones
+insert. Verified end-to-end in
+`packages/memory/src/merge.test.ts` and by direct smoke test (see commit
+history) — a second same-day run of Marketing Intelligence found 0 new
+signals and 16 recurring, confirming no duplication.
+
+## Connectors — ports and mock adapters
+
+`packages/connectors` is deliberately structured as ports-and-adapters:
+
+```
+ports/               interfaces (SocialResearchConnector, TrendConnector,
+                      MetaAdsConnector, ExternalSystemConnector)
+adapters/mock/        today's only implementations — realistic fake data,
+                      zero network calls
+registry.ts           getSocialResearchConnector() etc. — the one place
+                      that decides which adapter backs each port
+```
+
+Every employee calls the `registry.ts` factory functions, never an adapter
+directly. Swapping in a real integration later (Instagram Graph API, Meta
+Marketing API, ...) is "write `adapters/instagram-graph-api.adapter.ts`
+implementing `SocialResearchConnector`, change one return statement in
+`registry.ts`" — zero changes to any employee's logic. `getExternalSystemConnector()`
+(MK Connect) only has a guardrail adapter that always throws, until the
+Owner authorizes integration.
+
+## Meta Ads AI's workflow (propose + decide, no execution)
 
 ```mermaid
 stateDiagram-v2
-    [*] --> pending: proposeAction(recommendation)
+    [*] --> pending: proposeAction() — one per actionable recommendation, called automatically inside runDaily
     pending --> approved: decideOnApproval(owner, "approved")
     pending --> rejected: decideOnApproval(owner, "rejected")
-    approved --> executed: executeApprovedAction() → connectors.executeMetaAdsAction()
-    executed --> [*]
+    approved --> [*]
     rejected --> [*]
 ```
 
-`assertApproved()` in `@mkh/security` is the single gate every execution
-path must pass — it throws `ApprovalError` for anything not in `approved`
-status. Every outcome (executed or failed) is written to `action_logs`.
+This is the workflow's *entire* scope today. There is no `execute()` on
+`MetaAdsConnector` and no code path that would call the real Meta
+Marketing API — publishing/mutating a campaign is a distinct future phase
+requiring its own explicit sign-off (see `docs/ROADMAP.md`). `decideOnApproval`
+enforces RBAC via `@mkh/security` (only the `owner` role may decide);
+today nothing calls it automatically — it's ready for MK Connect (or a
+human via MK Connect's UI) to call once that integration exists.
+
+## Data flow, one daily task
+
+```mermaid
+sequenceDiagram
+    participant Cron as node-cron (local-runner.ts)
+    participant Exec as scheduler.runScheduledTask
+    participant Run as ai-engine.runEmployeeTask
+    participant Emp as employee.runDaily
+    participant Conn as connectors (mock adapters)
+    participant Mem as memory.KnowledgeBase
+    participant DB as database.Repository
+    participant Notif as notifications.notify
+
+    Cron->>Exec: schedule entry's cron expression fires
+    Exec->>DB: saveScheduleRun(status=running)
+    Exec->>Run: runEmployeeTask(employee, "daily", ctx)
+    Run->>Emp: runDaily(ctx, workLogger)
+    Emp->>Conn: fetch mocked data
+    Emp->>Mem: remember(facts) [Marketing Intelligence only]
+    Emp->>Notif: notify() when something needs attention
+    Emp-->>Run: AIReport
+    Run->>DB: saveReport(report)
+    Run->>DB: logWorkStep() at each SOP milestone
+    Exec->>DB: updateScheduleRun(status, reportId)
+```
 
 ## Data modes
 
-`DATA_MODE=dummy` (default): `InMemoryRepository` seeded from
-`packages/database/src/seed-data.ts`. Nothing persists across restarts, no
-external calls — safe to run anywhere, including CI.
+`DATA_MODE=dummy` (default): `InMemoryRepository`, seeded from
+`packages/database/src/seed-data.ts`. No external calls, safe anywhere.
 
-`DATA_MODE=supabase`: `SupabaseRepository` against the schema in
-`supabase/migrations/`. Sales/finance "source of truth" reads still return
-the same seed fixtures until a real ERP sync exists (see `ROADMAP.md`).
+`DATA_MODE=supabase`: `SupabaseRepository` against
+`supabase/migrations/`. Sales/finance/Markom-completion reads still return
+seed fixtures until a real ERP sync exists.
 
-Both implementations satisfy the same `Repository` interface
-(`packages/database/src/repository.ts`), so no module, page, or MCP tool
-needs to know which mode is active.
+Both satisfy the same `Repository` interface — no employee, the scheduler,
+or the MCP server needs to know which mode is active.
 
 ## Security boundaries
 
-- Sales Supervisor and Finance Analyst never call a `save*` method for
-  business data — only `get*Snapshot()` — enforced by omitting write
-  methods from `Repository` for those tables entirely.
-- Meta Ads actions can only reach `connectors.executeMetaAdsAction()`
-  through `workflow.executeApprovedAction()`, which calls
-  `assertApproved()` first.
-- `connectors.callMkConnect()` always throws — a guardrail against
-  accidental production wiring before the Owner authorizes it.
-- RBAC (`@mkh/security/roles.ts`) currently gates one action
-  (`meta-ads:approve-action` → `owner` only); extend the table as more
-  gated actions are added.
+- Sales Supervisor and Finance Analyst only ever call `get*Snapshot()` —
+  `Repository` has no write methods for those tables, so there's no code
+  path that could mutate business data even by mistake.
+- Meta Ads AI can only reach `proposeAction()`/`decideOnApproval()` — no
+  execute path exists in this phase (see above).
+- `getExternalSystemConnector().call()` (MK Connect) always throws — a
+  guardrail against accidental production wiring.
+- RBAC (`@mkh/security/roles.ts`) gates `meta-ads:approve-action` to the
+  `owner` role only; extend the table as more gated actions are added.

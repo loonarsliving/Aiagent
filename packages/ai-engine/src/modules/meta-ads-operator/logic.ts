@@ -1,5 +1,6 @@
 import type { AdCampaign } from "@mkh/connectors";
-import type { CampaignMetrics, CampaignRecommendation } from "./types";
+import type { AIReport, ApprovalRequest } from "@mkh/shared";
+import type { CampaignMetrics, CampaignRecommendation, MetaAdsAnalysisData, MonthlyAdsRecap, WeeklyCampaignComparison } from "./types";
 
 /** Thresholds are intentionally simple/explainable — tune per real historical data once integrated. */
 export const CPL_TARGET_IDR = 80_000;
@@ -67,4 +68,40 @@ export function recommendForCampaign(metrics: CampaignMetrics): CampaignRecommen
     reason: "Performa dalam rentang wajar, tidak perlu perubahan saat ini.",
     proposedChange: {},
   };
+}
+
+export function buildWeeklyComparison(periodLabel: string, dailyReports: AIReport<MetaAdsAnalysisData>[]): WeeklyCampaignComparison {
+  const actionableCounts = new Map<string, number>();
+  let totalActionableRecommendations = 0;
+
+  for (const report of dailyReports) {
+    for (const rec of report.data?.recommendations ?? []) {
+      if (rec.action === "no_action") continue;
+      totalActionableRecommendations += 1;
+      actionableCounts.set(rec.campaignName, (actionableCounts.get(rec.campaignName) ?? 0) + 1);
+    }
+  }
+
+  const recurringCampaignIssues = Array.from(actionableCounts.entries())
+    .filter(([, count]) => count > 1)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name]) => name);
+
+  return { periodLabel, daysAggregated: dailyReports.length, totalActionableRecommendations, recurringCampaignIssues };
+}
+
+export function buildMonthlyAdsRecap(periodLabel: string, dailyReports: AIReport<MetaAdsAnalysisData>[], approvals: ApprovalRequest[]): MonthlyAdsRecap {
+  const totalApprovalsProposed = dailyReports.reduce((sum, r) => sum + (r.data?.proposedApprovalIds.length ?? 0), 0);
+  const approvalOutcomes = {
+    approved: approvals.filter((a) => a.status === "approved").length,
+    rejected: approvals.filter((a) => a.status === "rejected").length,
+    pending: approvals.filter((a) => a.status === "pending").length,
+  };
+
+  const note =
+    approvalOutcomes.pending > 0
+      ? `${approvalOutcomes.pending} approval request masih menunggu keputusan Owner.`
+      : "Semua approval request bulan ini sudah diputuskan.";
+
+  return { periodLabel, daysAggregated: dailyReports.length, totalApprovalsProposed, approvalOutcomes, note };
 }

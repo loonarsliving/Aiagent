@@ -1,38 +1,44 @@
 import cron from "node-cron";
 import { createLogger } from "@mkh/shared";
 import { getRepository } from "@mkh/database";
-import { runScheduledModule } from "./executor";
+import { toCronExpression } from "./cron-expression";
+import { runScheduledTask } from "./executor";
 
 const logger = createLogger("scheduler:local-runner");
 const TIMEZONE = "Asia/Makassar";
 
-function toCronExpression(time: string): string {
-  const [hour, minute] = time.split(":").map(Number);
-  return `${minute} ${hour} * * *`;
-}
-
+/**
+ * The primary autonomous execution path for this phase: a plain backend
+ * process (no UI, no HTTP server) that arms one node-cron job per
+ * schedule entry — daily, weekly, and monthly alike — and lets every
+ * employee work without being manually triggered. Run with
+ * `pnpm scheduler:dev`. HTTP-triggered cron (Vercel, MK Connect webhook)
+ * is a future integration concern; runScheduledTask is already shared and
+ * ready for that when it's needed.
+ */
 async function main() {
   const entries = await getRepository().listScheduleEntries();
   const active = entries.filter((e) => e.enabled);
 
   logger.info("starting local scheduler", {
     timezone: TIMEZONE,
-    slots: active.map((e) => `${e.time} -> ${e.moduleId}`),
+    slots: active.map((e) => `[${e.cadence}] ${e.time} -> ${e.moduleId}`),
   });
 
   for (const entry of active) {
+    const expression = toCronExpression(entry);
     cron.schedule(
-      toCronExpression(entry.time),
+      expression,
       () => {
-        runScheduledModule(entry.moduleId, entry.time).catch((err) => {
-          logger.error("scheduled run failed", { moduleId: entry.moduleId, error: String(err) });
+        runScheduledTask(entry).catch((err) => {
+          logger.error("scheduled task failed", { moduleId: entry.moduleId, cadence: entry.cadence, error: String(err) });
         });
       },
       { timezone: TIMEZONE },
     );
   }
 
-  logger.info(`local scheduler running — ${active.length} slot(s) armed. Ctrl+C to stop.`);
+  logger.info(`local scheduler running — ${active.length} slot(s) armed across daily/weekly/monthly cadences. Ctrl+C to stop.`);
 }
 
 main().catch((err) => {
