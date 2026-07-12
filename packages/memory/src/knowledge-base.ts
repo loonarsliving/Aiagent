@@ -20,13 +20,18 @@ export class KnowledgeBase {
     const existingById = new Map(existing.map((item) => [item.id, item]));
     const now = new Date().toISOString();
 
-    const results: RememberResult[] = [];
-    for (const fact of facts) {
-      const prior = existingById.get(fact.id) ?? null;
-      const merged = mergeKnowledgeItem(prior, fact, now);
-      await this.repo.upsertKnowledgeItem(merged);
-      results.push({ item: merged, isNew: prior === null });
-    }
+    // Each fact's id is independent (that's the whole point of the dedup key),
+    // so the upserts don't need to happen one-at-a-time — this used to be a
+    // sequential for-await loop, which meant N round-trips in series against
+    // a real database (SupabaseRepository). Same result, just concurrent.
+    const results = await Promise.all(
+      facts.map(async (fact) => {
+        const prior = existingById.get(fact.id) ?? null;
+        const merged = mergeKnowledgeItem(prior, fact, now);
+        await this.repo.upsertKnowledgeItem(merged);
+        return { item: merged, isNew: prior === null };
+      }),
+    );
     return results;
   }
 

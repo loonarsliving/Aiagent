@@ -24,7 +24,7 @@ import {
   seedSalesSnapshot,
 } from "../seed-data";
 
-type Row = Record<string, unknown>;
+export type Row = Record<string, unknown>;
 
 /**
  * DATA_MODE=supabase implementation. Tables mirror supabase/migrations/.
@@ -296,7 +296,7 @@ export class SupabaseRepository implements Repository {
   }
 }
 
-function mapReportRow(row: Row): AIReport {
+export function mapReportRow(row: Row): AIReport {
   return {
     id: row.id as string,
     moduleId: row.module_id as AIModuleId,
@@ -309,7 +309,7 @@ function mapReportRow(row: Row): AIReport {
   };
 }
 
-function mapScheduleRunRow(row: Row): ScheduleRunRecord {
+export function mapScheduleRunRow(row: Row): ScheduleRunRecord {
   return {
     id: row.id as string,
     moduleId: row.module_id as AIModuleId,
@@ -322,7 +322,7 @@ function mapScheduleRunRow(row: Row): ScheduleRunRecord {
   };
 }
 
-function toApprovalRow(approval: ApprovalRequest): Row {
+export function toApprovalRow(approval: ApprovalRequest): Row {
   return {
     id: approval.id,
     module_id: approval.moduleId,
@@ -338,7 +338,7 @@ function toApprovalRow(approval: ApprovalRequest): Row {
   };
 }
 
-function mapApprovalRow(row: Row): ApprovalRequest {
+export function mapApprovalRow(row: Row): ApprovalRequest {
   return {
     id: row.id as string,
     moduleId: row.module_id as AIModuleId,

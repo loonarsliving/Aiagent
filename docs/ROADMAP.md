@@ -1,5 +1,35 @@
 # Roadmap
 
+## Sprint 1 status: NOT closed
+
+A full technical audit was performed — see
+`docs/audits/SPRINT1_AUDIT.md` for the complete report, scorecard, and
+evidence. Verdict: the engineering foundation (architecture, workflow
+engine, notification abstraction, scheduler, test discipline) is solid,
+but the AI Worker roster is only 6 of 11 required roles, retry logic
+doesn't exist, there's no operator-usable manual trigger, and memory is
+adopted by only 1 of 6 employees. **Do not begin the Gemini/AI Provider
+integration or any other API work until the Sprint 2 prerequisites below
+are done.**
+
+## Sprint 2 prerequisites (must complete before any API integration)
+
+1. **Build the 5 missing AI Workers** to the same standard as the existing
+   6 (SOP in `docs/SOP.md`, `runDaily`/`runWeekly`/`runMonthly`, real
+   calculation logic, unit tests): Branch Performance Manager, Content
+   Planner, HR Officer, OTA Manager, SOP Guardian.
+2. **Add retry logic to `runEmployeeTask`** (`packages/ai-engine/src/core/agent-runner.ts`)
+   — bounded attempts with backoff, outcome recorded in the work log.
+3. **Add a manual-trigger entrypoint** — at minimum a CLI script (e.g.
+   `pnpm run:employee <id> <cadence>`) so an operator can run any employee
+   on demand without writing a throwaway script.
+4. **Extend memory to at least Sales Supervisor and Finance Analyst**,
+   proving `@mkh/memory`'s `KnowledgeBase` generalizes beyond its one
+   current adopter (Marketing Intelligence).
+5. Reconsider whether `apps/dashboard` should be removed entirely now that
+   it's confirmed out of scope (MK Connect owns all UI) — keeping it means
+   ongoing CVE/compat maintenance for code nobody uses.
+
 ## Direction (current)
 
 This is a **backend AI Workforce Engine** with no UI of its own. All UI —
@@ -34,6 +64,12 @@ connectors and seeded/dummy data.
 - `apps/dashboard` kept (not deleted) as a frozen, read-only internal
   debug viewer from an earlier phase — receives compatibility fixes only,
   no new features.
+- Sprint 1 audit fixes (see `docs/audits/SPRINT1_AUDIT.md`): fixed a
+  timezone-correctness bug in CEO Assistant's freshness check, centralized
+  the company timezone constant, parallelized a sequential knowledge-base
+  write loop, patched a critical dependency CVE, and closed test-coverage
+  gaps in `shared`/`database`/`security`/`memory`/`notifications` (72 → 125
+  passing tests).
 
 ## Explicitly deferred (each requires separate, explicit Owner authorization)
 

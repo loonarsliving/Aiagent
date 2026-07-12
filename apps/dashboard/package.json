@@ -19,7 +19,7 @@
     "@mkh/notifications": "workspace:*",
     "@mkh/ai-engine": "workspace:*",
     "@mkh/scheduler": "workspace:*",
-    "next": "14.2.15",
+    "next": "14.2.35",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

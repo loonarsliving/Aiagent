@@ -1,4 +1,4 @@
-import { generateId, type AIModuleId, type AIReport, type AIRunContext, type EmployeeSOP } from "@mkh/shared";
+import { generateId, isSameCompanyDay, type AIModuleId, type AIReport, type AIRunContext, type EmployeeSOP } from "@mkh/shared";
 import { getRepository } from "@mkh/database";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
@@ -41,14 +41,10 @@ const sop: EmployeeSOP = {
 /** Ensures we have today's report for a sibling employee — reuses the latest one if it's already fresh, otherwise runs it on demand so the summary is never built on stale data. */
 async function getOrRunLatestDaily<TData>(moduleId: AIModuleId, employee: AIEmployee<TData>, context: AIRunContext): Promise<TData> {
   const existing = await getRepository().getLatestReport(moduleId);
-  const isFresh = existing && isSameDay(existing.generatedAt, new Date());
+  const isFresh = existing && isSameCompanyDay(existing.generatedAt, new Date());
   if (existing && isFresh) return existing.data as TData;
   const fresh = await runEmployeeTask(employee, "daily", context);
   return fresh.data;
-}
-
-function isSameDay(iso: string, now: Date): boolean {
-  return new Date(iso).toDateString() === now.toDateString();
 }
 
 /**

@@ -1,11 +1,10 @@
 import cron from "node-cron";
-import { createLogger } from "@mkh/shared";
+import { COMPANY_TIMEZONE, createLogger } from "@mkh/shared";
 import { getRepository } from "@mkh/database";
 import { toCronExpression } from "./cron-expression";
 import { runScheduledTask } from "./executor";
 
 const logger = createLogger("scheduler:local-runner");
-const TIMEZONE = "Asia/Makassar";
 
 /**
  * The primary autonomous execution path for this phase: a plain backend
@@ -21,7 +20,7 @@ async function main() {
   const active = entries.filter((e) => e.enabled);
 
   logger.info("starting local scheduler", {
-    timezone: TIMEZONE,
+    timezone: COMPANY_TIMEZONE,
     slots: active.map((e) => `[${e.cadence}] ${e.time} -> ${e.moduleId}`),
   });
 
@@ -34,7 +33,7 @@ async function main() {
           logger.error("scheduled task failed", { moduleId: entry.moduleId, cadence: entry.cadence, error: String(err) });
         });
       },
-      { timezone: TIMEZONE },
+      { timezone: COMPANY_TIMEZONE },
     );
   }
 
