@@ -23,6 +23,12 @@ describe("ceoAssistantEmployee", () => {
     expect(sop?.status).toBe("success");
   });
 
+  it("notifies the Owner with the Executive Summary via the Notification Coordinator", async () => {
+    await runEmployeeTask(ceoAssistantEmployee, "daily", { triggeredBy: "manual" });
+    const notifications = await getRepository().listNotifications(50);
+    expect(notifications.some((n) => n.sourceModuleId === "ceo-assistant")).toBe(true);
+  });
+
   it("reuses an already-fresh sibling report instead of re-running it", async () => {
     await runEmployeeTask(ceoAssistantEmployee, "daily", { triggeredBy: "manual" });
     const secondRun = await runEmployeeTask(ceoAssistantEmployee, "daily", { triggeredBy: "manual" });

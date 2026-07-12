@@ -1,6 +1,7 @@
 import { generateId, type AIReport, type AIRunContext, type EmployeeSOP } from "@mkh/shared";
 import { getRepository } from "@mkh/database";
 import { getSocialResearchConnector, getTrendConnector } from "@mkh/connectors";
+import { notify } from "@mkh/notifications";
 import { KnowledgeBase } from "@mkh/memory";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
@@ -18,7 +19,7 @@ const sop: EmployeeSOP = {
     { id: "competitor_analysis", offsetMinutes: 30, label: "Analisa kompetitor" },
     { id: "insight", offsetMinutes: 60, label: "Membuat insight & rekomendasi" },
     { id: "memory_save", offsetMinutes: 75, label: "Menyimpan hasil ke knowledge base" },
-    { id: "report", offsetMinutes: 90, label: "Mengirim Market Intelligence Report" },
+    { id: "report", offsetMinutes: 90, label: "Mengirim Market Intelligence Report ke Markom" },
   ],
   weekly: [
     { id: "start", offsetMinutes: 0, label: "Mulai menyusun strategi mingguan" },
@@ -66,6 +67,15 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
   const stats = await kb.stats(MODULE_ID);
   const data = buildDailyResearchSummary(rememberResults, stats);
   await log.step("insight", "Insight & rekomendasi harian disusun");
+
+  await notify({
+    title: `Market Intelligence Report — ${data.newSignals} sinyal baru`,
+    body: data.dailyRecommendation,
+    severity: "info",
+    target: "markom",
+    sourceModuleId: MODULE_ID,
+  });
+  await log.step("report", "Market Intelligence Report dikirim ke Markom");
 
   return {
     id: generateId("rpt"),

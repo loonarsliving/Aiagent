@@ -1,5 +1,6 @@
 import { generateId, isSameCompanyDay, type AIModuleId, type AIReport, type AIRunContext, type EmployeeSOP } from "@mkh/shared";
 import { getRepository } from "@mkh/database";
+import { notify } from "@mkh/notifications";
 import { KnowledgeBase } from "@mkh/memory";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
@@ -106,13 +107,24 @@ async function runDaily(context: AIRunContext, log: WorkLogger): Promise<AIRepor
   );
   await log.step("memory_save", `${themes.length} tema perhatian disimpan ke memory`);
 
+  const summary = `Executive Summary ${today}: ${data.attentionNeeded.length} hal butuh perhatian, ${data.tomorrowPriorities.length} prioritas besok.`;
+
+  await notify({
+    title: `Executive Summary — ${today}`,
+    body: summary,
+    severity: data.attentionNeeded.length > 0 ? "warning" : "info",
+    target: "owner",
+    sourceModuleId: MODULE_ID,
+  });
+  await log.step("report", "Executive Summary dikirim ke Owner");
+
   return {
     id: generateId("rpt"),
     moduleId: MODULE_ID,
     cadence: "daily",
     generatedAt: new Date().toISOString(),
     status: "success",
-    summary: `Executive Summary ${today}: ${data.attentionNeeded.length} hal butuh perhatian, ${data.tomorrowPriorities.length} prioritas besok.`,
+    summary,
     data,
   };
 }

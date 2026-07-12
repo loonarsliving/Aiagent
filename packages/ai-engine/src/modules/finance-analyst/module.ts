@@ -1,5 +1,6 @@
 import { generateId, type AIReport, type AIRunContext, type EmployeeSOP } from "@mkh/shared";
 import { getRepository } from "@mkh/database";
+import { notify } from "@mkh/notifications";
 import { KnowledgeBase } from "@mkh/memory";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
@@ -51,13 +52,24 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
   );
   await log.step("memory_save", `Riwayat anomali disimpan untuk ${data.anomalies.length} transaksi`);
 
+  const summary = `Net cashflow Rp${data.netCashflowIdr.toLocaleString("id-ID")}, proyeksi 7 hari ke depan Rp${data.cashflowProjectionNext7dIdr.toLocaleString("id-ID")}, ${data.anomalies.length} transaksi tidak biasa terdeteksi.`;
+
+  await notify({
+    title: data.anomalies.length > 0 ? `${data.anomalies.length} transaksi tidak biasa terdeteksi` : "Laporan keuangan harian",
+    body: summary,
+    severity: data.anomalies.length > 0 ? "warning" : "info",
+    target: "owner",
+    sourceModuleId: MODULE_ID,
+  });
+  await log.step("report", "Laporan keuangan dikirim ke Owner");
+
   return {
     id: generateId("rpt"),
     moduleId: MODULE_ID,
     cadence: "daily",
     generatedAt: new Date().toISOString(),
     status: "success",
-    summary: `Net cashflow Rp${data.netCashflowIdr.toLocaleString("id-ID")}, proyeksi 7 hari ke depan Rp${data.cashflowProjectionNext7dIdr.toLocaleString("id-ID")}, ${data.anomalies.length} transaksi tidak biasa terdeteksi.`,
+    summary,
     data,
   };
 }

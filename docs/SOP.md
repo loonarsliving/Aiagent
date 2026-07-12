@@ -37,7 +37,7 @@ the manual-trigger service (`pnpm employee:trigger -- --module=<id>
 | 30 | Analisa kompetitor |
 | 60 | Membuat insight & rekomendasi |
 | 75 | Menyimpan hasil ke knowledge base |
-| 90 | Mengirim Market Intelligence Report |
+| 90 | Mengirim Market Intelligence Report ke Markom (via Notification Coordinator) |
 
 **Weekly** (Senin, 06:30): mengumpulkan laporan harian seminggu terakhir → menyusun Weekly Strategy.
 
@@ -151,7 +151,7 @@ its own section in the next report, no code change needed. Read-only.
 | 10 | Membuat prediksi cashflow |
 | 15 | Mendeteksi pengeluaran tidak biasa |
 | 17 | Menyimpan riwayat anomali ke memory |
-| 20 | Mengirim laporan untuk Owner |
+| 20 | Mengirim laporan untuk Owner (via Notification Coordinator) |
 
 **Weekly** (Senin, 15:30): ringkasan finansial mingguan.
 
@@ -238,7 +238,7 @@ modifies another employee's data, only observes and warns.
 | 5 | Membaca laporan harian 9 AI lain (menjalankan yang belum jalan hari ini) |
 | 20 | Menyusun Executive Summary |
 | 23 | Menyimpan tema perhatian berulang ke memory |
-| 25 | Mengirim Executive Summary ke Owner |
+| 25 | Mengirim Executive Summary ke Owner (via Notification Coordinator) |
 
 **Weekly** (Senin, 18:30): rollup mingguan dari Executive Summary 7 hari terakhir.
 

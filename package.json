@@ -18,7 +18,8 @@
     "test:coverage": "vitest run --coverage",
     "scheduler:dev": "tsx watch packages/scheduler/src/local-runner.ts",
     "employee:trigger": "tsx packages/scheduler/src/trigger-cli.ts",
-    "mcp:dev": "tsx watch packages/mcp-server/src/index.ts"
+    "mcp:dev": "tsx watch packages/mcp-server/src/index.ts",
+    "acceptance-test": "tsx --tsconfig scripts/tsconfig.json scripts/sprint1-acceptance-test.ts"
   },
   "devDependencies": {
     "@types/node": "^20.14.9",
