@@ -6,6 +6,7 @@ import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
 import { runEmployeeTask } from "../../core/agent-runner";
 import { aggregateRecentReports } from "../../core/aggregate-reports";
+import { runReasoning } from "../../reasoning";
 import { marketingIntelligenceEmployee } from "../marketing-intelligence/module";
 import type { DailyResearchSummary } from "../marketing-intelligence/types";
 import { contentPlannerEmployee } from "../content-planner/module";
@@ -36,6 +37,7 @@ const sop: EmployeeSOP = {
     { id: "compile_summary", offsetMinutes: 20, label: "Menyusun Executive Summary" },
     { id: "memory_save", offsetMinutes: 23, label: "Menyimpan tema perhatian berulang ke memory" },
     { id: "report", offsetMinutes: 25, label: "Mengirim Executive Summary ke Owner" },
+    { id: "ai_reasoning", offsetMinutes: 27, label: "AI melakukan reasoning (Gemini) & menyusun rekomendasi" },
   ],
   weekly: [
     { id: "start", offsetMinutes: 0, label: "Mulai rollup mingguan" },
@@ -118,6 +120,18 @@ async function runDaily(context: AIRunContext, log: WorkLogger): Promise<AIRepor
   });
   await log.step("report", "Executive Summary dikirim ke Owner");
 
+  const aiReasoning = await runReasoning(
+    {
+      moduleId: MODULE_ID,
+      observation: summary,
+      contextData: {
+        attentionNeeded: data.attentionNeeded,
+        tomorrowPriorities: data.tomorrowPriorities,
+      },
+    },
+    log,
+  );
+
   return {
     id: generateId("rpt"),
     moduleId: MODULE_ID,
@@ -126,6 +140,7 @@ async function runDaily(context: AIRunContext, log: WorkLogger): Promise<AIRepor
     status: "success",
     summary,
     data,
+    aiReasoning,
   };
 }
 

@@ -1,5 +1,6 @@
 import type {
   AIModuleId,
+  AIReasoningLogEntry,
   AIReport,
   ApprovalRequest,
   ApprovalStatus,
@@ -37,6 +38,7 @@ export class InMemoryRepository implements Repository {
   private scheduleRuns: ScheduleRunRecord[] = [];
   private workLog: WorkLogEntry[] = [];
   private knowledgeItems = new Map<string, KnowledgeItem>();
+  private aiReasoningLogs: AIReasoningLogEntry[] = [];
   private readonly schedule: ScheduleEntry[] = DEFAULT_SCHEDULE;
   private readonly salesSnapshot: SalesSnapshot = seedSalesSnapshot();
   private readonly financeSnapshot: FinanceSnapshot = seedFinanceSnapshot();
@@ -155,5 +157,17 @@ export class InMemoryRepository implements Repository {
 
   async getHRSnapshot(): Promise<HRSnapshot> {
     return this.hrSnapshot;
+  }
+
+  async saveAIReasoningLog(entry: AIReasoningLogEntry): Promise<AIReasoningLogEntry> {
+    this.aiReasoningLogs.unshift(entry);
+    return entry;
+  }
+
+  async listAIReasoningLogs(filter: { moduleId?: AIModuleId; runId?: string }, limit = 100): Promise<AIReasoningLogEntry[]> {
+    const filtered = this.aiReasoningLogs.filter(
+      (e) => (!filter.moduleId || e.moduleId === filter.moduleId) && (!filter.runId || e.runId === filter.runId),
+    );
+    return filtered.slice(0, limit);
   }
 }

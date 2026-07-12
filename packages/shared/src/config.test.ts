@@ -10,6 +10,16 @@ const ENV_KEYS = [
   "NOTIFY_CHANNEL_DEFAULT",
   "MAX_RETRY_ATTEMPTS",
   "RETRY_BACKOFF_MS",
+  "AI_PROVIDER",
+  "GEMINI_API_KEY",
+  "GEMINI_MODEL",
+  "AI_TEMPERATURE",
+  "AI_MAX_OUTPUT_TOKENS",
+  "AI_RETRY_ATTEMPTS",
+  "AI_RETRY_BACKOFF_MS",
+  "AI_TIMEOUT_MS",
+  "AI_SAFETY_THRESHOLD",
+  "AI_RETRIEVAL_TOP_K",
 ] as const;
 
 let snapshot: Record<string, string | undefined>;
@@ -85,5 +95,41 @@ describe("getConfig", () => {
 
     resetConfigCache();
     expect(getConfig().DATA_MODE).toBe("supabase"); // picked up after reset
+  });
+
+  it("defaults the AI Provider Layer to gemini with sane, documented defaults", () => {
+    const config = getConfig();
+    expect(config.AI_PROVIDER).toBe("gemini");
+    expect(config.GEMINI_API_KEY).toBeUndefined();
+    expect(config.GEMINI_MODEL).toBe("gemini-2.0-flash");
+    expect(config.AI_TEMPERATURE).toBe(0.3);
+    expect(config.AI_MAX_OUTPUT_TOKENS).toBe(1024);
+    expect(config.AI_RETRY_ATTEMPTS).toBe(3);
+    expect(config.AI_RETRY_BACKOFF_MS).toBe(300);
+    expect(config.AI_TIMEOUT_MS).toBe(15_000);
+    expect(config.AI_SAFETY_THRESHOLD).toBe("BLOCK_MEDIUM_AND_ABOVE");
+    expect(config.AI_RETRIEVAL_TOP_K).toBe(8);
+  });
+
+  it("rejects an unknown AI_PROVIDER instead of silently accepting it", () => {
+    process.env.AI_PROVIDER = "not-a-real-provider";
+    resetConfigCache();
+    expect(() => getConfig()).toThrow();
+  });
+
+  it("coerces AI_TEMPERATURE from a string env var and rejects out-of-range values", () => {
+    process.env.AI_TEMPERATURE = "0.7";
+    resetConfigCache();
+    expect(getConfig().AI_TEMPERATURE).toBe(0.7);
+
+    process.env.AI_TEMPERATURE = "5";
+    resetConfigCache();
+    expect(() => getConfig()).toThrow();
+  });
+
+  it("reads GEMINI_API_KEY when set, without ever defaulting it to a real-looking value", () => {
+    process.env.GEMINI_API_KEY = "test-key-not-real";
+    resetConfigCache();
+    expect(getConfig().GEMINI_API_KEY).toBe("test-key-not-real");
   });
 });

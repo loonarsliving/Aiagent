@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AIReport, ApprovalRequest, WorkLogEntry } from "@mkh/shared";
+import type { AIReasoningLogEntry, AIReport, ApprovalRequest, WorkLogEntry } from "@mkh/shared";
 import type { KnowledgeItem } from "../domain-types";
 import { InMemoryRepository } from "./in-memory-repository";
 
@@ -194,6 +194,44 @@ describe("InMemoryRepository — knowledge base", () => {
 
     const otherModule = await repo.listKnowledgeItems({ moduleId: "sales-supervisor" });
     expect(otherModule.map((i) => i.id)).toEqual(["c"]);
+  });
+});
+
+describe("InMemoryRepository — AI reasoning logs", () => {
+  let repo: InMemoryRepository;
+  beforeEach(() => (repo = new InMemoryRepository()));
+
+  function logEntry(overrides: Partial<AIReasoningLogEntry> = {}): AIReasoningLogEntry {
+    return {
+      id: "log_1",
+      moduleId: "finance-analyst",
+      runId: "run_1",
+      provider: "gemini",
+      model: "gemini-2.0-flash",
+      status: "success",
+      responseTimeMs: 500,
+      retryCount: 0,
+      createdAt: "2026-07-12T00:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  it("saves and lists reasoning log entries, most recent first", async () => {
+    await repo.saveAIReasoningLog(logEntry({ id: "a" }));
+    await repo.saveAIReasoningLog(logEntry({ id: "b" }));
+    const logs = await repo.listAIReasoningLogs({});
+    expect(logs.map((l) => l.id)).toEqual(["b", "a"]);
+  });
+
+  it("filters by moduleId and runId independently", async () => {
+    await repo.saveAIReasoningLog(logEntry({ id: "a", moduleId: "finance-analyst", runId: "run_1" }));
+    await repo.saveAIReasoningLog(logEntry({ id: "b", moduleId: "hr-officer", runId: "run_2" }));
+
+    const byModule = await repo.listAIReasoningLogs({ moduleId: "hr-officer" });
+    expect(byModule.map((l) => l.id)).toEqual(["b"]);
+
+    const byRun = await repo.listAIReasoningLogs({ runId: "run_1" });
+    expect(byRun.map((l) => l.id)).toEqual(["a"]);
   });
 });
 

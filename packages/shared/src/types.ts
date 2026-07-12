@@ -56,6 +56,13 @@ export interface AIReport<TData = unknown> {
   durationMs?: number;
   /** How many retry attempts were needed (0 = succeeded on the first try). Attached by the runner. */
   retryCount?: number;
+  /**
+   * Sprint 2 — the Reasoning Engine's AI-generated layer on top of `data`.
+   * Optional: a module that hasn't called the Reasoning Engine (or whose
+   * reasoning call failed) simply omits this; `data` (deterministic,
+   * provider-agnostic) is always present regardless.
+   */
+  aiReasoning?: ReasoningResult;
 }
 
 export type ApprovalStatus = "pending" | "approved" | "rejected";
@@ -181,4 +188,75 @@ export interface WorkLogEntry {
   loggedAt: string;
   /** Which attempt this step belongs to (0 = first try, 1 = first retry, ...). Omitted for cadences that never needed a retry. */
   attempt?: number;
+}
+
+// ============================================================================
+// Sprint 2 — AI Provider Layer / Reasoning Engine
+// ============================================================================
+
+/**
+ * Canonical home for this type — @mkh/ai-provider imports it from here
+ * (never the other way) so the plug-and-play provider contract and the
+ * cross-cutting envelope types (AIReasoningLogEntry, AIReport.aiReasoning)
+ * agree on the same union without @mkh/shared depending on @mkh/ai-provider.
+ */
+export type AIProviderName = "gemini" | "claude" | "openai" | "ollama";
+
+export type ReasoningPriority = "low" | "medium" | "high" | "urgent";
+
+/**
+ * The Output Engine's standard envelope — every Digital Employee's
+ * reasoning call produces exactly this shape, regardless of provider.
+ * Attached to `AIReport.aiReasoning`; never replaces the deterministic
+ * `AIReport.data` a module's own logic.ts already computed.
+ */
+export interface ReasoningOutput {
+  priority: ReasoningPriority;
+  summary: string;
+  recommendation: string;
+  reason: string;
+  /** 0-1. */
+  confidenceScore: number;
+  needApproval: boolean;
+  /** Who/what this should escalate to, or null when nothing needs escalating. */
+  escalation: string | null;
+  nextAction: string;
+}
+
+/**
+ * A structured result returned instead of throwing when reasoning fails
+ * even after retries — see packages/ai-engine/src/reasoning/reasoning-engine.ts.
+ * Keeps the "never throw to the caller" guarantee Sprint 1 established for
+ * runEmployeeTask, now also true for the reasoning layer.
+ */
+export interface ReasoningFailure {
+  failed: true;
+  reason: string;
+}
+
+export type ReasoningResult = (ReasoningOutput & { failed?: false }) | ReasoningFailure;
+
+/**
+ * The audit trail for every AIProvider call — distinct from WorkLogEntry
+ * (which logs SOP *steps*; this logs AI provider *calls* specifically:
+ * provider, response time, token usage, retry count, success/failure and
+ * why). One row per reasoning attempt sequence (not per individual retry).
+ */
+export interface AIReasoningLogEntry {
+  id: string;
+  moduleId: AIModuleId;
+  runId: string;
+  provider: AIProviderName;
+  model: string;
+  status: "success" | "error";
+  /** Total wall-clock time across all retry attempts. */
+  responseTimeMs: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  /** How many retries were needed (0 = succeeded on the first attempt). */
+  retryCount: number;
+  /** Populated only when status === "error". */
+  errorReason?: string;
+  createdAt: string;
 }

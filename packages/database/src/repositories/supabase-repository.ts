@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type {
   AIModuleId,
+  AIReasoningLogEntry,
   AIReport,
   ApprovalRequest,
   ApprovalStatus,
@@ -304,6 +305,52 @@ export class SupabaseRepository implements Repository {
   async getHRSnapshot(): Promise<HRSnapshot> {
     return seedHRSnapshot();
   }
+
+  async saveAIReasoningLog(entry: AIReasoningLogEntry): Promise<AIReasoningLogEntry> {
+    await this.insert("ai_reasoning_logs", {
+      id: entry.id,
+      module_id: entry.moduleId,
+      run_id: entry.runId,
+      provider: entry.provider,
+      model: entry.model,
+      status: entry.status,
+      response_time_ms: entry.responseTimeMs,
+      prompt_tokens: entry.promptTokens ?? null,
+      completion_tokens: entry.completionTokens ?? null,
+      total_tokens: entry.totalTokens ?? null,
+      retry_count: entry.retryCount,
+      error_reason: entry.errorReason ?? null,
+      created_at: entry.createdAt,
+    });
+    return entry;
+  }
+
+  async listAIReasoningLogs(filter: { moduleId?: AIModuleId; runId?: string }, limit = 100): Promise<AIReasoningLogEntry[]> {
+    let query = this.client.from("ai_reasoning_logs").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (filter.moduleId) query = query.eq("module_id", filter.moduleId);
+    if (filter.runId) query = query.eq("run_id", filter.runId);
+    const { data, error } = await query;
+    if (error) throw new Error(`Supabase query failed: ${error.message}`);
+    return (data ?? []).map(mapAIReasoningLogRow);
+  }
+}
+
+export function mapAIReasoningLogRow(row: Row): AIReasoningLogEntry {
+  return {
+    id: row.id as string,
+    moduleId: row.module_id as AIModuleId,
+    runId: row.run_id as string,
+    provider: row.provider as AIReasoningLogEntry["provider"],
+    model: row.model as string,
+    status: row.status as AIReasoningLogEntry["status"],
+    responseTimeMs: row.response_time_ms as number,
+    promptTokens: (row.prompt_tokens as number | null) ?? undefined,
+    completionTokens: (row.completion_tokens as number | null) ?? undefined,
+    totalTokens: (row.total_tokens as number | null) ?? undefined,
+    retryCount: row.retry_count as number,
+    errorReason: (row.error_reason as string | null) ?? undefined,
+    createdAt: row.created_at as string,
+  };
 }
 
 export function mapReportRow(row: Row): AIReport {

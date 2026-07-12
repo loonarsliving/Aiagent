@@ -1,5 +1,6 @@
 import { generateId, getConfig, type AIModuleId, type NotificationChannelType, type NotificationMessage, type NotificationSeverity } from "@mkh/shared";
 import { getRepository } from "@mkh/database";
+import { refineNotificationWording } from "./ai-refinement";
 import type { NotificationChannel } from "./channel";
 import { dummyChannel } from "./channels/dummy";
 import { whatsappChannel } from "./channels/whatsapp";
@@ -41,13 +42,21 @@ export interface NotifyInput {
 export async function notify(input: NotifyInput): Promise<NotificationMessage> {
   const config = getConfig();
   const channelType = input.channel ?? config.NOTIFY_CHANNEL_DEFAULT;
+  const severity = input.severity ?? "info";
+
+  const wording = await refineNotificationWording({
+    title: input.title,
+    body: input.body,
+    severity,
+    target: input.target,
+  });
 
   const message: NotificationMessage = {
     id: generateId("ntf"),
     channel: channelType,
-    severity: input.severity ?? "info",
-    title: input.title,
-    body: input.body,
+    severity,
+    title: wording.title,
+    body: wording.body,
     target: input.target,
     sourceModuleId: input.sourceModuleId,
     createdAt: new Date().toISOString(),

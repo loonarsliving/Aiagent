@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@mkh/shared": "workspace:*",
-    "@mkh/database": "workspace:*"
+    "@mkh/database": "workspace:*",
+    "@mkh/ai-provider": "workspace:*"
   }
 }

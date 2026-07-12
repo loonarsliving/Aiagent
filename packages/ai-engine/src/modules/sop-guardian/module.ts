@@ -5,6 +5,7 @@ import { KnowledgeBase } from "@mkh/memory";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
 import { aggregateRecentReports } from "../../core/aggregate-reports";
+import { runReasoning } from "../../reasoning";
 import { buildMonthlySOPRecap, buildSOPComplianceData, buildWeeklySOPTrend, extractLatestRunSteps, type ModuleCheckInput } from "./logic";
 import type { MonthlySOPRecap, SOPComplianceData, WeeklySOPTrend } from "./types";
 
@@ -25,6 +26,7 @@ const sop: EmployeeSOP = {
     { id: "memory_save", offsetMinutes: 13, label: "Menyimpan riwayat pelanggaran ke memory" },
     { id: "notify", offsetMinutes: 15, label: "Mengirim peringatan untuk setiap pelanggaran SOP" },
     { id: "report", offsetMinutes: 18, label: "Mengirim laporan kepatuhan SOP harian" },
+    { id: "ai_reasoning", offsetMinutes: 20, label: "AI melakukan reasoning (Gemini) & menyusun rekomendasi" },
   ],
   weekly: [
     { id: "start", offsetMinutes: 0, label: "Mulai analisa tren kepatuhan mingguan" },
@@ -80,14 +82,29 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
     await log.step("notify", "Semua AI patuh SOP hari ini, tidak perlu peringatan");
   }
 
+  const summary = `${data.employeesChecked} AI diperiksa, ${data.violations.length} pelanggaran SOP ditemukan, ${data.compliantModuleIds.length} patuh penuh.`;
+  const aiReasoning = await runReasoning(
+    {
+      moduleId: MODULE_ID,
+      observation: summary,
+      contextData: {
+        violationCount: data.violations.length,
+        employeesChecked: data.employeesChecked,
+        compliantCount: data.compliantModuleIds.length,
+      },
+    },
+    log,
+  );
+
   return {
     id: generateId("rpt"),
     moduleId: MODULE_ID,
     cadence: "daily",
     generatedAt: new Date().toISOString(),
     status: "success",
-    summary: `${data.employeesChecked} AI diperiksa, ${data.violations.length} pelanggaran SOP ditemukan, ${data.compliantModuleIds.length} patuh penuh.`,
+    summary,
     data,
+    aiReasoning,
   };
 }
 

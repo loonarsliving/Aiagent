@@ -5,6 +5,7 @@ import { KnowledgeBase } from "@mkh/memory";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
 import { aggregateRecentReports } from "../../core/aggregate-reports";
+import { runReasoning } from "../../reasoning";
 import { buildHRAnalysis, buildMonthlyHRRecap, buildWeeklyHRTrend } from "./logic";
 import type { HRAnalysisData, MonthlyHRRecap, WeeklyHRTrend } from "./types";
 
@@ -19,6 +20,7 @@ const sop: EmployeeSOP = {
     { id: "memory_save", offsetMinutes: 17, label: "Menyimpan riwayat flag ke memory" },
     { id: "notify", offsetMinutes: 20, label: "Mengirim peringatan ke HR/Owner jika ada staff yang perlu perhatian" },
     { id: "report", offsetMinutes: 25, label: "Mengirim laporan harian" },
+    { id: "ai_reasoning", offsetMinutes: 27, label: "AI melakukan reasoning (Gemini) & menyusun rekomendasi" },
   ],
   weekly: [
     { id: "start", offsetMinutes: 0, label: "Mulai analisa tren mingguan HR" },
@@ -67,14 +69,29 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
     await log.step("notify", "Tidak ada staff yang perlu perhatian, tidak perlu notifikasi");
   }
 
+  const summary = `${data.totalStaff} staff dianalisa (${data.periodLabel}), rata-rata KPI ${data.avgKpiScore}, ${data.flaggedStaff.length} staff perlu perhatian.`;
+  const aiReasoning = await runReasoning(
+    {
+      moduleId: MODULE_ID,
+      observation: summary,
+      contextData: {
+        flaggedStaffCount: data.flaggedStaff.length,
+        avgKpiScore: data.avgKpiScore,
+        totalStaff: data.totalStaff,
+      },
+    },
+    log,
+  );
+
   return {
     id: generateId("rpt"),
     moduleId: MODULE_ID,
     cadence: "daily",
     generatedAt: new Date().toISOString(),
     status: "success",
-    summary: `${data.totalStaff} staff dianalisa (${data.periodLabel}), rata-rata KPI ${data.avgKpiScore}, ${data.flaggedStaff.length} staff perlu perhatian.`,
+    summary,
     data,
+    aiReasoning,
   };
 }
 

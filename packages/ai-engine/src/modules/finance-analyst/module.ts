@@ -5,6 +5,7 @@ import { KnowledgeBase } from "@mkh/memory";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
 import { aggregateRecentReports } from "../../core/aggregate-reports";
+import { runReasoning } from "../../reasoning";
 import { buildFinanceAnalysis, buildMonthlyFinancialReport, buildWeeklyFinancialSummary } from "./logic";
 import type { FinanceAnalysisData, MonthlyFinancialReport, WeeklyFinancialSummary } from "./types";
 
@@ -18,6 +19,7 @@ const sop: EmployeeSOP = {
     { id: "anomaly_detection", offsetMinutes: 15, label: "Mendeteksi pengeluaran tidak biasa" },
     { id: "memory_save", offsetMinutes: 17, label: "Menyimpan riwayat anomali ke memory" },
     { id: "report", offsetMinutes: 20, label: "Mengirim laporan untuk Owner" },
+    { id: "ai_reasoning", offsetMinutes: 22, label: "AI melakukan reasoning (Gemini) & menyusun rekomendasi" },
   ],
   weekly: [
     { id: "start", offsetMinutes: 0, label: "Mulai ringkasan mingguan" },
@@ -63,6 +65,19 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
   });
   await log.step("report", "Laporan keuangan dikirim ke Owner");
 
+  const aiReasoning = await runReasoning(
+    {
+      moduleId: MODULE_ID,
+      observation: summary,
+      contextData: {
+        netCashflowIdr: data.netCashflowIdr,
+        cashflowProjectionNext7dIdr: data.cashflowProjectionNext7dIdr,
+        anomalyCount: data.anomalies.length,
+      },
+    },
+    log,
+  );
+
   return {
     id: generateId("rpt"),
     moduleId: MODULE_ID,
@@ -71,6 +86,7 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
     status: "success",
     summary,
     data,
+    aiReasoning,
   };
 }
 

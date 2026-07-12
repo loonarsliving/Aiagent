@@ -12,6 +12,8 @@ import { getRepository } from "@mkh/database";
  */
 export interface WorkLogger {
   step(step: string, detail?: string, status?: WorkLogStatus): Promise<void>;
+  /** The run this logger belongs to — same id every WorkLogEntry it writes carries, and what the Reasoning Engine (Sprint 2) correlates AIReasoningLogEntry rows against. */
+  readonly runId: string;
 }
 
 /** Internal: lets the runner tag every step written during a given retry attempt, without employee code needing to pass the attempt number itself. */
@@ -40,11 +42,13 @@ export function createWorkLogger(moduleId: AIModuleId, runId: string, cadence: T
   }
 
   const base: RunnerWorkLogger = {
+    runId,
     async step(step, detail, status = "info") {
       await write(step, detail, status, 0);
     },
     forAttempt(attempt: number): WorkLogger {
       return {
+        runId,
         async step(step, detail, status = "info") {
           await write(step, detail, status, attempt);
         },

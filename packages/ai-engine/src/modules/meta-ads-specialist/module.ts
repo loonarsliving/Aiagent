@@ -6,6 +6,7 @@ import { KnowledgeBase } from "@mkh/memory";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
 import { aggregateRecentReports } from "../../core/aggregate-reports";
+import { runReasoning } from "../../reasoning";
 import type { DailyResearchSummary } from "../marketing-intelligence/types";
 import {
   buildMonthlyAdsRecap,
@@ -30,6 +31,7 @@ const sop: EmployeeSOP = {
     { id: "propose_approvals", offsetMinutes: 25, label: "Membuat Approval Request — status WAITING OWNER APPROVAL" },
     { id: "notify", offsetMinutes: 30, label: "Mengirim notifikasi jika ada campaign perlu perhatian" },
     { id: "report", offsetMinutes: 35, label: "Mengirim laporan analisa harian" },
+    { id: "ai_reasoning", offsetMinutes: 37, label: "AI melakukan reasoning (Gemini) & menyusun rekomendasi" },
   ],
   weekly: [
     { id: "start", offsetMinutes: 0, label: "Mulai perbandingan mingguan" },
@@ -101,14 +103,29 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
     proposedApprovalIds,
   };
 
+  const summary = `${metrics.length} campaign dianalisa, ${proposedApprovalIds.length} Approval Request menunggu keputusan Owner.`;
+  const aiReasoning = await runReasoning(
+    {
+      moduleId: MODULE_ID,
+      observation: summary,
+      contextData: {
+        campaignCount: metrics.length,
+        actionableCount: actionable.length,
+        proposedApprovalIds,
+      },
+    },
+    log,
+  );
+
   return {
     id: generateId("rpt"),
     moduleId: MODULE_ID,
     cadence: "daily",
     generatedAt: new Date().toISOString(),
     status: "success",
-    summary: `${metrics.length} campaign dianalisa, ${proposedApprovalIds.length} Approval Request menunggu keputusan Owner.`,
+    summary,
     data,
+    aiReasoning,
   };
 }
 

@@ -1,4 +1,5 @@
 export * from "./core/index";
+export * from "./reasoning/index";
 export * from "./registry";
 export * from "./modules/marketing-intelligence/index";
 export * from "./modules/content-planner/index";

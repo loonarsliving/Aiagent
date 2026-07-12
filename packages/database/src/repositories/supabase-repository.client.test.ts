@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AIReport, ApprovalRequest, NotificationMessage, ScheduleEntry, ScheduleRunRecord, WorkLogEntry } from "@mkh/shared";
+import type { AIReasoningLogEntry, AIReport, ApprovalRequest, NotificationMessage, ScheduleEntry, ScheduleRunRecord, WorkLogEntry } from "@mkh/shared";
 import type { KnowledgeItem } from "../domain-types";
 import { SupabaseRepository } from "./supabase-repository";
 
@@ -357,5 +357,59 @@ describe("SupabaseRepository — business data fixtures", () => {
     expect((await repo.getFinanceSnapshot()).transactions.length).toBeGreaterThan(0);
     expect((await repo.getHRSnapshot()).staff.length).toBeGreaterThan(0);
     expect(Array.isArray((await repo.getMarkomChecklistCompletionState()).completedDayIndexes)).toBe(true);
+  });
+});
+
+describe("SupabaseRepository — AI reasoning logs", () => {
+  function logEntry(overrides: Partial<AIReasoningLogEntry> = {}): AIReasoningLogEntry {
+    return {
+      id: "log_1",
+      moduleId: "finance-analyst",
+      runId: "run_1",
+      provider: "gemini",
+      model: "gemini-2.0-flash",
+      status: "success",
+      responseTimeMs: 500,
+      retryCount: 0,
+      createdAt: "2026-07-12T00:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  it("saveAIReasoningLog inserts the row shape and returns the given entry", async () => {
+    const { repo, calls } = withFakeClient({ ai_reasoning_logs: { data: null, error: null } });
+    const saved = await repo.saveAIReasoningLog(logEntry());
+    expect(saved.id).toBe("log_1");
+    expect(calls.ai_reasoning_logs?.[0]?.op).toBe("insert");
+    expect((calls.ai_reasoning_logs?.[0]?.row as Record<string, unknown>).module_id).toBe("finance-analyst");
+  });
+
+  it("listAIReasoningLogs maps rows and applies moduleId/runId filters", async () => {
+    const row = {
+      id: "log_1",
+      module_id: "finance-analyst",
+      run_id: "run_1",
+      provider: "gemini",
+      model: "gemini-2.0-flash",
+      status: "success",
+      response_time_ms: 500,
+      prompt_tokens: 100,
+      completion_tokens: 50,
+      total_tokens: 150,
+      retry_count: 1,
+      error_reason: null,
+      created_at: "2026-07-12T00:00:00.000Z",
+    };
+    const { repo } = withFakeClient({ ai_reasoning_logs: { data: [row], error: null } });
+    const result = await repo.listAIReasoningLogs({});
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ id: "log_1", provider: "gemini", promptTokens: 100, completionTokens: 50, totalTokens: 150, retryCount: 1 });
+    expect(await repo.listAIReasoningLogs({ moduleId: "finance-analyst" })).toHaveLength(1);
+    expect(await repo.listAIReasoningLogs({ runId: "run_1" })).toHaveLength(1);
+  });
+
+  it("listAIReasoningLogs throws on a query error", async () => {
+    const { repo } = withFakeClient({ ai_reasoning_logs: { data: null, error: { message: "boom" } } });
+    await expect(repo.listAIReasoningLogs({})).rejects.toThrow("boom");
   });
 });

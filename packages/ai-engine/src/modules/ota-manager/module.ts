@@ -6,6 +6,7 @@ import { KnowledgeBase } from "@mkh/memory";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
 import { aggregateRecentReports } from "../../core/aggregate-reports";
+import { runReasoning } from "../../reasoning";
 import { buildMonthlyOTARecap, buildOTAManagerData, buildWeeklyOTATrend } from "./logic";
 import type { MonthlyOTARecap, OTAManagerData, WeeklyOTATrend } from "./types";
 
@@ -19,6 +20,7 @@ const sop: EmployeeSOP = {
     { id: "memory_save", offsetMinutes: 15, label: "Menyimpan riwayat rekomendasi harga ke memory" },
     { id: "notify", offsetMinutes: 18, label: "Mengirim notifikasi untuk properti yang butuh penyesuaian harga" },
     { id: "report", offsetMinutes: 20, label: "Mengirim laporan harian" },
+    { id: "ai_reasoning", offsetMinutes: 22, label: "AI melakukan reasoning (Gemini) & menyusun rekomendasi" },
   ],
   weekly: [
     { id: "start", offsetMinutes: 0, label: "Mulai analisa tren okupansi mingguan" },
@@ -65,14 +67,28 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
     await log.step("notify", "Semua properti dalam rentang harga normal, tidak perlu notifikasi");
   }
 
+  const summary = `${data.properties.length} properti dianalisa, ${data.propertiesNeedingAction.length} direkomendasikan untuk penyesuaian harga.`;
+  const aiReasoning = await runReasoning(
+    {
+      moduleId: MODULE_ID,
+      observation: summary,
+      contextData: {
+        propertiesNeedingAction: data.propertiesNeedingAction,
+        totalProperties: data.properties.length,
+      },
+    },
+    log,
+  );
+
   return {
     id: generateId("rpt"),
     moduleId: MODULE_ID,
     cadence: "daily",
     generatedAt: new Date().toISOString(),
     status: "success",
-    summary: `${data.properties.length} properti dianalisa, ${data.propertiesNeedingAction.length} direkomendasikan untuk penyesuaian harga.`,
+    summary,
     data,
+    aiReasoning,
   };
 }
 

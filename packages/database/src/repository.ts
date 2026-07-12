@@ -1,5 +1,6 @@
 import type {
   AIModuleId,
+  AIReasoningLogEntry,
   AIReport,
   ApprovalRequest,
   ApprovalStatus,
@@ -55,9 +56,14 @@ export interface Repository {
   logWorkStep(entry: WorkLogEntry): Promise<WorkLogEntry>;
   listWorkLog(filter: { moduleId?: AIModuleId; runId?: string }, limit?: number): Promise<WorkLogEntry[]>;
 
-  // Knowledge base (Marketing Intelligence's memory — see @mkh/memory)
+  // Knowledge base (every employee's own memory — see @mkh/memory)
   upsertKnowledgeItem(item: KnowledgeItem): Promise<KnowledgeItem>;
   listKnowledgeItems(filter: { moduleId?: AIModuleId; category?: string }, limit?: number): Promise<KnowledgeItem[]>;
+
+  // AI reasoning audit log (Sprint 2 — one row per AIProvider call sequence;
+  // see packages/ai-engine/src/reasoning/reasoning-engine.ts)
+  saveAIReasoningLog(entry: AIReasoningLogEntry): Promise<AIReasoningLogEntry>;
+  listAIReasoningLogs(filter: { moduleId?: AIModuleId; runId?: string }, limit?: number): Promise<AIReasoningLogEntry[]>;
 
   // Internal business-data fixtures consumed by employees
   getSalesSnapshot(): Promise<SalesSnapshot>;

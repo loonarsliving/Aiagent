@@ -5,6 +5,7 @@ import { KnowledgeBase } from "@mkh/memory";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
 import { aggregateRecentReports } from "../../core/aggregate-reports";
+import { runReasoning } from "../../reasoning";
 import type { DailyResearchSummary } from "../marketing-intelligence/types";
 import { buildChecklist, buildDailyContentPlan, buildMonthlyRecap, findOverdueItems, pickThemesForWeek } from "./logic";
 import type { DailyContentPlan, MonthlyOperationsRecap, WeeklyChecklistRebuild } from "./types";
@@ -20,6 +21,7 @@ const sop: EmployeeSOP = {
     { id: "memory_save", offsetMinutes: 20, label: "Menyimpan tema konten ke memory" },
     { id: "reminders", offsetMinutes: 25, label: "Mengirim reminder untuk konten belum selesai" },
     { id: "report", offsetMinutes: 30, label: "Mengirim laporan content plan harian" },
+    { id: "ai_reasoning", offsetMinutes: 32, label: "AI melakukan reasoning (Gemini) & menyusun rekomendasi" },
   ],
   weekly: [
     { id: "start", offsetMinutes: 0, label: "Mulai membangun ulang checklist mingguan" },
@@ -89,6 +91,19 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
 
   const data = buildDailyContentPlan(checklist, today, remindersSent, freshThemeCount);
 
+  const aiReasoning = await runReasoning(
+    {
+      moduleId: MODULE_ID,
+      observation: data.prioritySummary,
+      contextData: {
+        overdueCount: overdue.length,
+        freshThemeCount,
+        totalChecklistItems: checklist.length,
+      },
+    },
+    log,
+  );
+
   return {
     id: generateId("rpt"),
     moduleId: MODULE_ID,
@@ -97,6 +112,7 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
     status: "success",
     summary: data.prioritySummary,
     data,
+    aiReasoning,
   };
 }
 

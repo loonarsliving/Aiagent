@@ -6,6 +6,7 @@ import { KnowledgeBase } from "@mkh/memory";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
 import { aggregateRecentReports } from "../../core/aggregate-reports";
+import { runReasoning } from "../../reasoning";
 import { buildDailyResearchSummary, buildDiscoveredFacts, buildMonthlyRetrospective, buildWeeklyStrategy } from "./logic";
 import type { DailyResearchSummary, MonthlyRetrospective, WeeklyStrategy } from "./types";
 
@@ -20,6 +21,7 @@ const sop: EmployeeSOP = {
     { id: "insight", offsetMinutes: 60, label: "Membuat insight & rekomendasi" },
     { id: "memory_save", offsetMinutes: 75, label: "Menyimpan hasil ke knowledge base" },
     { id: "report", offsetMinutes: 90, label: "Mengirim Market Intelligence Report ke Markom" },
+    { id: "ai_reasoning", offsetMinutes: 95, label: "AI melakukan reasoning (Gemini) & menyusun rekomendasi" },
   ],
   weekly: [
     { id: "start", offsetMinutes: 0, label: "Mulai menyusun strategi mingguan" },
@@ -77,14 +79,29 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
   });
   await log.step("report", "Market Intelligence Report dikirim ke Markom");
 
+  const summary = `${data.newSignals} sinyal baru, ${data.recurringSignals} sinyal berulang. ${data.dailyRecommendation}`;
+  const aiReasoning = await runReasoning(
+    {
+      moduleId: MODULE_ID,
+      observation: summary,
+      contextData: {
+        newSignals: data.newSignals,
+        recurringSignals: data.recurringSignals,
+        topOpportunities: data.topOpportunities,
+      },
+    },
+    log,
+  );
+
   return {
     id: generateId("rpt"),
     moduleId: MODULE_ID,
     cadence: "daily",
     generatedAt: new Date().toISOString(),
     status: "success",
-    summary: `${data.newSignals} sinyal baru, ${data.recurringSignals} sinyal berulang. ${data.dailyRecommendation}`,
+    summary,
     data,
+    aiReasoning,
   };
 }
 

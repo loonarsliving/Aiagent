@@ -13,6 +13,26 @@ const envSchema = z.object({
   MAX_RETRY_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
   /** Base backoff in ms before a retry; doubles each attempt (1x, 2x, 4x, ...). */
   RETRY_BACKOFF_MS: z.coerce.number().int().min(0).max(60_000).default(200),
+
+  // --- AI Provider Layer (Sprint 2 — Reasoning Engine) ------------------
+  /** Which AIProvider implementation the Reasoning Engine resolves through. Only "gemini" is implemented; the others are guardrail stubs. */
+  AI_PROVIDER: z.enum(["gemini", "claude", "openai", "ollama"]).default("gemini"),
+  /** Required only when AI_PROVIDER=gemini. Never hardcoded — read from env only. */
+  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_MODEL: z.string().default("gemini-2.0-flash"),
+  /** 0-2, higher = more creative/less deterministic. */
+  AI_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.3),
+  AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(64).max(8192).default(1024),
+  /** Reasoning Engine's own retry loop around AIProvider.generate() — independent of MAX_RETRY_ATTEMPTS (which governs employee task retries). */
+  AI_RETRY_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+  AI_RETRY_BACKOFF_MS: z.coerce.number().int().min(0).max(60_000).default(300),
+  AI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(15_000),
+  /** Gemini safety filter threshold — how aggressively to block flagged content categories. */
+  AI_SAFETY_THRESHOLD: z
+    .enum(["BLOCK_NONE", "BLOCK_ONLY_HIGH", "BLOCK_MEDIUM_AND_ABOVE", "BLOCK_LOW_AND_ABOVE"])
+    .default("BLOCK_MEDIUM_AND_ABOVE"),
+  /** Max knowledge/memory items the Retrieval Layer includes in a single reasoning prompt — token optimization, never "send the whole knowledge base." */
+  AI_RETRIEVAL_TOP_K: z.coerce.number().int().min(1).max(50).default(8),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
@@ -35,6 +55,16 @@ export function getConfig(): AppConfig {
       NOTIFY_CHANNEL_DEFAULT: process.env.NOTIFY_CHANNEL_DEFAULT,
       MAX_RETRY_ATTEMPTS: process.env.MAX_RETRY_ATTEMPTS,
       RETRY_BACKOFF_MS: process.env.RETRY_BACKOFF_MS,
+      AI_PROVIDER: process.env.AI_PROVIDER,
+      GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+      GEMINI_MODEL: process.env.GEMINI_MODEL,
+      AI_TEMPERATURE: process.env.AI_TEMPERATURE,
+      AI_MAX_OUTPUT_TOKENS: process.env.AI_MAX_OUTPUT_TOKENS,
+      AI_RETRY_ATTEMPTS: process.env.AI_RETRY_ATTEMPTS,
+      AI_RETRY_BACKOFF_MS: process.env.AI_RETRY_BACKOFF_MS,
+      AI_TIMEOUT_MS: process.env.AI_TIMEOUT_MS,
+      AI_SAFETY_THRESHOLD: process.env.AI_SAFETY_THRESHOLD,
+      AI_RETRIEVAL_TOP_K: process.env.AI_RETRIEVAL_TOP_K,
     });
   }
   return cached;

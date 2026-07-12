@@ -5,6 +5,7 @@ import { KnowledgeBase } from "@mkh/memory";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
 import { aggregateRecentReports } from "../../core/aggregate-reports";
+import { runReasoning } from "../../reasoning";
 import { buildMonthlyTargetRecap, buildSupervisionData, buildWeeklyPaceCheck } from "./logic";
 import type { MonthlyTargetRecap, SalesSupervisionData, WeeklyPaceCheck } from "./types";
 
@@ -19,6 +20,7 @@ const sop: EmployeeSOP = {
     { id: "memory_save", offsetMinutes: 18, label: "Menyimpan riwayat follow-up ke memory" },
     { id: "notify", offsetMinutes: 20, label: "Mengirim notifikasi ke Dir Ops jika ada yang perlu perhatian" },
     { id: "report", offsetMinutes: 25, label: "Mengirim laporan harian" },
+    { id: "ai_reasoning", offsetMinutes: 27, label: "AI melakukan reasoning (Gemini) & menyusun rekomendasi" },
   ],
   weekly: [
     { id: "start", offsetMinutes: 0, label: "Mulai pengecekan pace mingguan" },
@@ -69,14 +71,29 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
     await log.step("notify", "Tidak ada sales tertinggal, tidak perlu notifikasi");
   }
 
+  const summary = `Progress keseluruhan ${data.overallProgressPct}% (${data.periodLabel}), ${data.laggingReps.length} dari ${data.reps.length} sales tertinggal.`;
+  const aiReasoning = await runReasoning(
+    {
+      moduleId: MODULE_ID,
+      observation: summary,
+      contextData: {
+        overallProgressPct: data.overallProgressPct,
+        laggingRepCount: data.laggingReps.length,
+        totalReps: data.reps.length,
+      },
+    },
+    log,
+  );
+
   return {
     id: generateId("rpt"),
     moduleId: MODULE_ID,
     cadence: "daily",
     generatedAt: new Date().toISOString(),
     status: "success",
-    summary: `Progress keseluruhan ${data.overallProgressPct}% (${data.periodLabel}), ${data.laggingReps.length} dari ${data.reps.length} sales tertinggal.`,
+    summary,
     data,
+    aiReasoning,
   };
 }
 

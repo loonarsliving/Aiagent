@@ -5,6 +5,7 @@ import { KnowledgeBase } from "@mkh/memory";
 import type { AIEmployee } from "../../core/ai-employee";
 import type { WorkLogger } from "../../core/work-logger";
 import { aggregateRecentReports } from "../../core/aggregate-reports";
+import { runReasoning } from "../../reasoning";
 import { buildBranchPerformanceData, buildMonthlyBranchRecap, buildWeeklyBranchTrend } from "./logic";
 import type { BranchPerformanceData, MonthlyBranchRecap, WeeklyBranchTrend } from "./types";
 
@@ -20,6 +21,7 @@ const sop: EmployeeSOP = {
     { id: "memory_save", offsetMinutes: 18, label: "Menyimpan riwayat rekomendasi ke memory" },
     { id: "notify", offsetMinutes: 20, label: "Mengirim notifikasi untuk cabang yang butuh perhatian" },
     { id: "report", offsetMinutes: 25, label: "Mengirim laporan harian" },
+    { id: "ai_reasoning", offsetMinutes: 27, label: "AI melakukan reasoning (Gemini) & menyusun rekomendasi" },
   ],
   weekly: [
     { id: "start", offsetMinutes: 0, label: "Mulai analisa tren mingguan per cabang" },
@@ -69,14 +71,28 @@ async function runDaily(_context: AIRunContext, log: WorkLogger): Promise<AIRepo
     await log.step("notify", "Semua cabang sehat, tidak perlu notifikasi");
   }
 
+  const summary = `${data.branches.length} cabang dianalisa (${data.periodLabel}), ${data.branchesNeedingAttention.length} butuh perhatian.`;
+  const aiReasoning = await runReasoning(
+    {
+      moduleId: MODULE_ID,
+      observation: summary,
+      contextData: {
+        branchesNeedingAttention: data.branchesNeedingAttention,
+        totalBranches: data.branches.length,
+      },
+    },
+    log,
+  );
+
   return {
     id: generateId("rpt"),
     moduleId: MODULE_ID,
     cadence: "daily",
     generatedAt: new Date().toISOString(),
     status: "success",
-    summary: `${data.branches.length} cabang dianalisa (${data.periodLabel}), ${data.branchesNeedingAttention.length} butuh perhatian.`,
+    summary,
     data,
+    aiReasoning,
   };
 }
 

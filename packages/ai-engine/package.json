@@ -14,6 +14,8 @@
     "@mkh/security": "workspace:*",
     "@mkh/connectors": "workspace:*",
     "@mkh/notifications": "workspace:*",
-    "@mkh/memory": "workspace:*"
+    "@mkh/memory": "workspace:*",
+    "@mkh/ai-provider": "workspace:*",
+    "zod": "^3.23.8"
   }
 }
