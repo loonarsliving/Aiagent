@@ -53,4 +53,13 @@ export interface Connector {
   broadcast(input: { recipients: string[]; content: OutboundMessageContent }): Promise<SendResult[]>;
   receiveWebhook(input: WebhookInput): Promise<WebhookResult>;
   healthCheck(): Promise<HealthCheckResult>;
+  /**
+   * Optional lifecycle hooks (Sprint 4B) — most connectors are plain REST
+   * calls with nothing to "connect," so these are undefined for every mock
+   * connector and for any future stateless adapter. A connector that does
+   * have setup/teardown work (e.g. validating credentials up front) defines
+   * them; `ConnectorManager.connect`/`disconnectConnector` no-op when absent.
+   */
+  connect?(): Promise<void>;
+  disconnect?(): Promise<void>;
 }

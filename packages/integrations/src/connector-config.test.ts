@@ -10,8 +10,15 @@ describe("connector-config", () => {
   });
 
   it("reports a connector as configured only once every one of its required env vars is set", () => {
-    expect(isConnectorConfigured("whatsapp", { WHATSAPP_BUSINESS_TOKEN: "x" })).toBe(false);
-    expect(isConnectorConfigured("whatsapp", { WHATSAPP_BUSINESS_TOKEN: "x", WHATSAPP_BUSINESS_PHONE_ID: "y" })).toBe(true);
+    expect(isConnectorConfigured("whatsapp", { WHATSAPP_ACCESS_TOKEN: "x" })).toBe(false);
+    expect(
+      isConnectorConfigured("whatsapp", {
+        WHATSAPP_ACCESS_TOKEN: "x",
+        WHATSAPP_PHONE_NUMBER_ID: "y",
+        WHATSAPP_BUSINESS_ACCOUNT_ID: "z",
+        WHATSAPP_VERIFY_TOKEN: "w",
+      }),
+    ).toBe(true);
   });
 
   it("missingConnectorEnv lists only the still-unset vars", () => {

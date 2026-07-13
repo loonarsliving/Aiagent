@@ -442,9 +442,11 @@ export interface IntegrationLogEntry {
   /** The request body (outgoing) or the raw webhook payload (incoming). */
   payload: unknown;
   status: "success" | "error" | "pending";
-  /** An HTTP-style status code when the (mock) call models one — always synthetic today, never a real network response. */
+  /** An HTTP-style status code — synthetic for a mock connector, the real response status once a live connector (e.g. Sprint 4B's WhatsApp Cloud API connector) is active. */
   responseStatus?: number;
   error?: string;
+  /** Round-trip time in ms for this specific call — absent for mock connectors (nothing to measure), present for live ones so the dashboard can surface real latency. */
+  latencyMs?: number;
   createdAt: string;
 }
 

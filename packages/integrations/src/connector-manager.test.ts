@@ -28,10 +28,161 @@ function fakeConnector(overrides: Partial<Connector> = {}): Connector {
   };
 }
 
-describe("ConnectorManager — getConnector", () => {
+describe("ConnectorManager — getConnector / getAllConnectors", () => {
   it("returns the underlying connector implementation for a type", () => {
     const manager = new ConnectorManager(new InMemoryRepository());
     expect(manager.getConnector("whatsapp").type).toBe("whatsapp");
+  });
+
+  it("getAllConnectors returns every connector keyed by type", () => {
+    const manager = new ConnectorManager(new InMemoryRepository());
+    const all = manager.getAllConnectors();
+    expect(Object.keys(all).sort()).toEqual(["email", "meta", "mkconnect", "ota", "telegram", "whatsapp"]);
+    expect(all.whatsapp).toBe(manager.getConnector("whatsapp"));
+  });
+});
+
+describe("ConnectorManager — connect/disconnect/reconnect", () => {
+  it("connect() runs the connector's connect() hook when present and returns its resulting health", async () => {
+    let connected = false;
+    const withConnect = fakeConnector({
+      connect: async () => {
+        connected = true;
+      },
+      healthCheck: async () => ({ ok: true, detail: "ready" }),
+    });
+    const manager = new ConnectorManager(new InMemoryRepository(), { whatsapp: withConnect });
+
+    const health = await manager.connect("whatsapp");
+    expect(connected).toBe(true);
+    expect(health.ok).toBe(true);
+  });
+
+  it("connect() never throws even when the connector's connect() hook rejects — the health check still runs and reports the failure", async () => {
+    const failingConnect = fakeConnector({
+      connect: async () => {
+        throw new Error("bad credentials");
+      },
+      healthCheck: async () => ({ ok: false, detail: "bad credentials" }),
+    });
+    const manager = new ConnectorManager(new InMemoryRepository(), { whatsapp: failingConnect });
+
+    const health = await manager.connect("whatsapp");
+    expect(health.ok).toBe(false);
+  });
+
+  it("connect() is a no-op for connectors that don't define connect() (e.g. every mock)", async () => {
+    const manager = new ConnectorManager(new InMemoryRepository());
+    await expect(manager.connect("email")).resolves.toMatchObject({ ok: true });
+  });
+
+  it("disconnectConnector() calls the connector's disconnect() hook when present, and no-ops otherwise", async () => {
+    let disconnected = false;
+    const withDisconnect = fakeConnector({
+      disconnect: async () => {
+        disconnected = true;
+      },
+    });
+    const manager = new ConnectorManager(new InMemoryRepository(), { whatsapp: withDisconnect });
+    await manager.disconnectConnector("whatsapp");
+    expect(disconnected).toBe(true);
+
+    await expect(manager.disconnectConnector("email")).resolves.toBeUndefined();
+  });
+
+  it("reconnect() re-enables a disabled connector and reports its refreshed status when healthy", async () => {
+    const manager = new ConnectorManager(new InMemoryRepository());
+    manager.disable("whatsapp");
+    const status = await manager.reconnect("whatsapp");
+    expect(manager.isEnabled("whatsapp")).toBe(true);
+    expect(status.disabledByOperator).toBe(false);
+  });
+
+  it("reconnect() re-disables the connector automatically if it's still unhealthy", async () => {
+    const stillUnhealthy = fakeConnector({ healthCheck: async () => ({ ok: false, detail: "still down" }) });
+    const manager = new ConnectorManager(new InMemoryRepository(), { whatsapp: stillUnhealthy });
+    manager.disable("whatsapp");
+
+    const status = await manager.reconnect("whatsapp");
+    expect(status.disabledByOperator).toBe(true);
+    expect(status.status).toBe("disconnected");
+  });
+});
+
+describe("ConnectorManager — getTelemetry", () => {
+  it("returns all-null telemetry when nothing has been logged for the connector", async () => {
+    const manager = new ConnectorManager(new InMemoryRepository());
+    const telemetry = await manager.getTelemetry("whatsapp");
+    expect(telemetry).toEqual({
+      lastWebhookAt: null,
+      lastIncomingMessageAt: null,
+      lastOutgoingMessageAt: null,
+      lastLatencyMs: null,
+      lastError: null,
+    });
+  });
+
+  it("derives lastWebhookAt/lastIncomingMessageAt from incoming logs and lastOutgoingMessageAt from outgoing logs", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveIntegrationLog({
+      id: "1",
+      connector: "whatsapp",
+      direction: "incoming",
+      payload: {},
+      status: "success",
+      createdAt: "2026-07-15T00:00:00.000Z",
+    });
+    await repo.saveIntegrationLog({
+      id: "2",
+      connector: "whatsapp",
+      direction: "outgoing",
+      payload: {},
+      status: "success",
+      latencyMs: 120,
+      createdAt: "2026-07-15T00:01:00.000Z",
+    });
+
+    const manager = new ConnectorManager(repo);
+    const telemetry = await manager.getTelemetry("whatsapp");
+    expect(telemetry.lastWebhookAt).toBe("2026-07-15T00:00:00.000Z");
+    expect(telemetry.lastIncomingMessageAt).toBe("2026-07-15T00:00:00.000Z");
+    expect(telemetry.lastOutgoingMessageAt).toBe("2026-07-15T00:01:00.000Z");
+    expect(telemetry.lastLatencyMs).toBe(120);
+  });
+
+  it("distinguishes an accepted incoming webhook from a rejected one for lastIncomingMessageAt", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveIntegrationLog({
+      id: "1",
+      connector: "whatsapp",
+      direction: "incoming",
+      payload: {},
+      status: "error",
+      error: "unrecognized payload",
+      createdAt: "2026-07-15T00:00:00.000Z",
+    });
+
+    const manager = new ConnectorManager(repo);
+    const telemetry = await manager.getTelemetry("whatsapp");
+    expect(telemetry.lastWebhookAt).toBe("2026-07-15T00:00:00.000Z"); // still counts as "a webhook arrived"
+    expect(telemetry.lastIncomingMessageAt).toBeNull(); // but not as "a message was accepted"
+    expect(telemetry.lastError).toEqual({ message: "unrecognized payload", at: "2026-07-15T00:00:00.000Z" });
+  });
+
+  it("scopes telemetry to the requested connector only", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveIntegrationLog({
+      id: "1",
+      connector: "telegram",
+      direction: "incoming",
+      payload: {},
+      status: "success",
+      createdAt: "2026-07-15T00:00:00.000Z",
+    });
+
+    const manager = new ConnectorManager(repo);
+    const telemetry = await manager.getTelemetry("whatsapp");
+    expect(telemetry.lastWebhookAt).toBeNull();
   });
 });
 

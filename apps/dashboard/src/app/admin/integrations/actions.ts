@@ -37,3 +37,10 @@ export async function enableConnectorAction(formData: FormData): Promise<void> {
   getConnectorManager().enable(connector);
   revalidatePath("/admin/integrations");
 }
+
+/** Clears any disabled state and attempts a fresh connect() (Sprint 4B) — re-disables automatically if still unhealthy. See ConnectorManager.reconnect. */
+export async function reconnectConnectorAction(formData: FormData): Promise<void> {
+  const connector = connectorFrom(formData);
+  await getConnectorManager().reconnect(connector);
+  revalidatePath("/admin/integrations");
+}

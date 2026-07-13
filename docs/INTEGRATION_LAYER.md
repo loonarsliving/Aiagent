@@ -160,3 +160,164 @@ dashboard page are untouched. `packages/connectors` (Sprint 1's
 research/social/trend connectors, used by the AI employees themselves) is
 a separate, unrelated system from this sprint's messaging/webhook
 Integration Layer — the two were not merged.
+
+---
+
+## Sprint 4B — Live WhatsApp Cloud API Connector
+
+Sprint 4B replaces the WhatsApp mock with a real connector against Meta's
+WhatsApp Cloud API (`https://graph.facebook.com/v23.0`). Every other
+connector (Telegram/Email/Meta/MK Connect/OTA) is still mock-only.
+
+### New environment variables
+
+```
+WHATSAPP_ACCESS_TOKEN=
+WHATSAPP_PHONE_NUMBER_ID=
+WHATSAPP_BUSINESS_ACCOUNT_ID=
+WHATSAPP_VERIFY_TOKEN=
+```
+
+These are distinct from the older `WHATSAPP_BUSINESS_TOKEN`/
+`WHATSAPP_BUSINESS_PHONE_ID` pair, which belong to the separate Sprint 1
+Notification Coordinator channel (`packages/notifications/src/channels/whatsapp.ts`)
+— untouched by this sprint. **`registry.ts`'s `createWhatsAppConnector`
+activates the real `WhatsAppCloudConnector` only once all four Sprint 4B
+vars are set; leaving any one unset keeps `MockWhatsAppConnector` active.**
+This is checked on every `createConnectorRegistry()` call (i.e. every
+`ConnectorManager` construction), so filling in credentials and
+restarting the process is enough to go live — no code change.
+
+### New files
+
+- `packages/integrations/src/connectors/whatsapp-http-client.ts` — narrow,
+  injectable HTTP client interface (`get`/`post`) plus
+  `createFetchWhatsAppHttpClient`, the real Bearer-token/JSON
+  implementation over `fetch`. Mirrors `packages/ai-provider`'s
+  `GeminiClientLike` pattern so tests never make a real network call.
+- `packages/integrations/src/connectors/whatsapp-cloud-connector.ts` —
+  `WhatsAppCloudConnector implements Connector`, plus `connect()`/
+  `disconnect()` (optional `Connector` lifecycle hooks — see below),
+  `verifyWebhook()`, `normalizeIncomingMessage()`, and the public
+  `normalizeOutgoingMessage()` mapper.
+- `packages/integrations/src/whatsapp-webhook-handler.ts` —
+  `handleWhatsAppWebhookEvent(repo, manager, rawPayload)`, the full
+  receive-a-message pipeline, and `verifyWhatsAppWebhookChallenge(mode,
+  token, manager)` for the `GET` handshake. Framework-independent (no
+  Next.js import) specifically so it's testable with plain vitest.
+
+### `Connector` interface addition
+
+`connect?(): Promise<void>` / `disconnect?(): Promise<void>` were added as
+**optional** methods on the shared `Connector` interface (`connector.ts`)
+— every mock connector leaves them undefined (nothing to connect to for a
+one-shot REST mock call), so this is additive and doesn't change any
+existing connector's behavior. `WhatsAppCloudConnector.connect()` proves
+credentials work by running `healthCheck()` up front and throwing if it
+fails; `disconnect()` is a documented no-op (the Cloud API is stateless
+REST — there is no persistent connection to close).
+
+### Real Graph API calls made
+
+| Connector method | Graph API call |
+|---|---|
+| `healthCheck()` | `GET /{phoneNumberId}?fields=verified_name,display_phone_number` |
+| `sendMessage()` (text) | `POST /{phoneNumberId}/messages` with `type: "text"` |
+| `sendTemplate()` | same endpoint, `type: "template"` (params mapped positionally to `{{1}}`, `{{2}}`, ... body parameters — Meta templates have no named-parameter concept) |
+| `sendMedia()` | same endpoint, `type: "image"` |
+| `broadcast()` | loops `sendMessage()` per recipient |
+
+Every call — success, a non-2xx Graph API response, or a thrown network
+error — is logged via `Repository.saveIntegrationLog`, including
+round-trip latency (`latencyMs`, a new optional field on
+`IntegrationLogEntry`). This is what powers the Admin Dashboard's Last
+Webhook/Last Incoming/Last Outgoing/Latency/Last Error columns
+(`ConnectorManager.getTelemetry(type)`, derived entirely from the log —
+no separate telemetry storage).
+
+### Webhook endpoint
+
+**File:** `apps/dashboard/src/app/api/integrations/whatsapp/webhook/route.ts`.
+
+- `GET` — Meta's verification handshake. Reads `hub.mode`/
+  `hub.verify_token`/`hub.challenge` query params, delegates to
+  `verifyWhatsAppWebhookChallenge()`, and echoes `hub.challenge` back on
+  success (`200`) or returns `403` otherwise. In mock mode (no
+  credentials set) this **always** returns `403` — there is no real
+  verify token to check a request against, so verification correctly
+  never succeeds until the connector is actually live.
+- `POST` — receives every WhatsApp event. Always acknowledges with `200`
+  (per Meta's guidance — a non-200 response triggers retries and,
+  eventually, subscription disablement) except for a genuinely
+  unparseable JSON body (`400`). Delegates entirely to
+  `handleWhatsAppWebhookEvent()`.
+
+**Pipeline inside `handleWhatsAppWebhookEvent`:** `WebhookEngine.receive()`
+(validate/normalize/log via the active connector, push into the Job
+Queue) -> `ConversationEngine.processNextWebhookJob()` (claim the queued
+message, open/continue the sender's `ChatConversation`, run the `AIRouter`
+to resolve a destination agent) -> `NotificationEngine.send()` sends a
+routing acknowledgment back to the sender through the same
+`ConnectorManager` (so the reply goes out via the real Graph API once
+live, or is logged as a mock send otherwise). The reply text names the
+assigned agent, or gives a generic acknowledgment when no agent matched —
+this is the deterministic Agent Registry's routing decision, **not** an
+LLM-generated response; wiring the Reasoning Engine into chat replies is
+future work, not part of this sprint's explicit method list.
+
+### Meta Developer setup (once real credentials exist)
+
+1. Deploy this app (or run it somewhere Meta can reach over HTTPS —
+   `ngrok`/similar for local testing).
+2. In the Meta App Dashboard → WhatsApp → Configuration, set:
+   - **Callback URL:** `https://<your-domain>/api/integrations/whatsapp/webhook`
+   - **Verify Token:** the same value as `WHATSAPP_VERIFY_TOKEN`
+3. Subscribe to the `messages` webhook field.
+4. Meta immediately sends a `GET` with `hub.mode=subscribe` to confirm —
+   the route above handles it automatically.
+
+**Manual verification test:**
+```bash
+curl "https://<your-domain>/api/integrations/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=<WHATSAPP_VERIFY_TOKEN>&hub.challenge=12345"
+# expect: 200 with body "12345"
+```
+
+**Example inbound payload** (what Meta's `POST` body looks like for a text message):
+```json
+{
+  "object": "whatsapp_business_account",
+  "entry": [{
+    "id": "<business_account_id>",
+    "changes": [{
+      "field": "messages",
+      "value": {
+        "messaging_product": "whatsapp",
+        "metadata": { "display_phone_number": "+62...", "phone_number_id": "<phone_number_id>" },
+        "contacts": [{ "profile": { "name": "Budi" }, "wa_id": "62812xxxxxxx" }],
+        "messages": [{ "from": "62812xxxxxxx", "id": "wamid.XXX", "timestamp": "1699999999", "type": "text", "text": { "body": "Halo" } }]
+      }
+    }]
+  }]
+}
+```
+
+**Manual send test** (once credentials are set, exercises the pipeline exactly like a real Meta webhook call would):
+```bash
+curl -X POST https://<your-domain>/api/integrations/whatsapp/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"object":"whatsapp_business_account","entry":[{"id":"1","changes":[{"field":"messages","value":{"messages":[{"from":"62812xxxxxxx","type":"text","text":{"body":"saya mau ajukan cuti"}}]}}]}]}'
+# expect: 200 with {"status":"processed","conversationId":"...","assignedAgent":"hr-officer","replySent":true}
+```
+
+### What Sprint 4B explicitly did not build
+
+No other connector went live (Telegram/Email/Meta/MK Connect/OTA are
+still mock). No LLM-generated reply content — the "AI result" sent back
+is the Agent Registry's deterministic routing decision. No signature
+verification is enforced by default (Meta doesn't require it for basic
+webhook receipt, and `WHATSAPP_VERIFY_TOKEN` already gates the
+subscription handshake itself) — `WebhookEngine`'s existing
+`computeWebhookSignature`/HMAC path from Sprint 4A is still available and
+wired up if a `secret` is ever passed to `WebhookEngine.receive()`, but
+`handleWhatsAppWebhookEvent()` doesn't pass one today. CRM, Finance, HR,
+and every other dashboard page are untouched.

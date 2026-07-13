@@ -8,9 +8,14 @@ import { CONNECTOR_TYPES, type ConnectorType } from "@mkh/shared";
  * are per-external-service credentials, not core app configuration.
  * Nothing here is a secret itself — just the *names* of the env vars a
  * real integration would need. See `.env.example`.
+ *
+ * `whatsapp` is live as of Sprint 4B (`WhatsAppCloudConnector` — see
+ * `connectors/whatsapp-cloud-connector.ts`); every other connector is
+ * still mock-only, so its entry here just documents what a future real
+ * adapter would need.
  */
 export const CONNECTOR_REQUIRED_ENV: Record<ConnectorType, string[]> = {
-  whatsapp: ["WHATSAPP_BUSINESS_TOKEN", "WHATSAPP_BUSINESS_PHONE_ID"],
+  whatsapp: ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_BUSINESS_ACCOUNT_ID", "WHATSAPP_VERIFY_TOKEN"],
   telegram: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"],
   email: ["EMAIL_PROVIDER_API_KEY"],
   meta: ["META_ADS_ACCESS_TOKEN", "META_ADS_ACCOUNT_ID"],
@@ -18,7 +23,7 @@ export const CONNECTOR_REQUIRED_ENV: Record<ConnectorType, string[]> = {
   ota: ["OTA_API_KEY"],
 };
 
-/** True once every env var a real adapter for this connector would need is set. Always false today (no real adapters exist) unless the operator has pre-populated credentials ahead of Sprint 4B. */
+/** True once every env var this connector needs is set. For `whatsapp`, true means the real `WhatsAppCloudConnector` is active (see `registry.ts`); for every other connector it's still documentation only, since no other live adapter exists yet. */
 export function isConnectorConfigured(type: ConnectorType, env: NodeJS.ProcessEnv = process.env): boolean {
   return CONNECTOR_REQUIRED_ENV[type].every((key) => Boolean(env[key]));
 }

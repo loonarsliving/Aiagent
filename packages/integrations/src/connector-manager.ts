@@ -25,6 +25,18 @@ export interface ConnectorStatusReport {
   health: HealthCheckResult | null;
 }
 
+export interface ConnectorTelemetry {
+  /** Most recent inbound request logged for this connector, accepted or not — Sprint 4B's "Last Webhook". */
+  lastWebhookAt: string | null;
+  /** Most recent inbound request that was successfully accepted/normalized — "Last Incoming Message". */
+  lastIncomingMessageAt: string | null;
+  /** Most recent outbound send that succeeded — "Last Outgoing Message". */
+  lastOutgoingMessageAt: string | null;
+  /** Round-trip time of the most recent logged call that recorded one (live connectors only). */
+  lastLatencyMs: number | null;
+  lastError: { message: string; at: string } | null;
+}
+
 /**
  * Central coordination point for every external channel (Sprint 4A brief,
  * Part 3). Responsibilities, each one method:
@@ -52,6 +64,67 @@ export class ConnectorManager {
 
   getConnector(type: ConnectorType): Connector {
     return this.connectors[type];
+  }
+
+  /** The full connector map — what the Webhook Engine needs to construct itself against every channel at once (see whatsapp-webhook-handler.ts). */
+  getAllConnectors(): Record<ConnectorType, Connector> {
+    return this.connectors;
+  }
+
+  /**
+   * Runs the connector's own `connect()` lifecycle hook if it defines one
+   * (mock connectors don't), then always reports the resulting health —
+   * this method itself never throws, matching every other
+   * ConnectorManager method's "errors are data, not exceptions" contract.
+   */
+  async connect(type: ConnectorType): Promise<HealthCheckResult> {
+    const connector = this.connectors[type];
+    if (connector.connect) {
+      try {
+        await connector.connect();
+      } catch {
+        // The health check below reflects the failure either way — nothing further to do here.
+      }
+    }
+    return this.checkHealth(type);
+  }
+
+  async disconnectConnector(type: ConnectorType): Promise<void> {
+    const connector = this.connectors[type];
+    if (connector.disconnect) await connector.disconnect();
+  }
+
+  /**
+   * What the Admin Dashboard's "Reconnect" button calls: clears any
+   * operator-disabled state, attempts a fresh `connect()`, and
+   * re-disables automatically if the connector turns out to still be
+   * unhealthy — so a stale "disabled" state never has to be cleared by
+   * hand once the underlying problem (bad credentials, an outage) is
+   * actually fixed.
+   */
+  async reconnect(type: ConnectorType): Promise<ConnectorStatusReport> {
+    this.enable(type);
+    await this.connect(type);
+    await this.disableIfUnhealthy(type);
+    return this.getStatus(type);
+  }
+
+  /** Derives per-connector telemetry (last webhook/incoming/outgoing/latency/error) from the integration log — no separate storage, so it's automatically accurate for both mock and live connectors. */
+  async getTelemetry(type: ConnectorType): Promise<ConnectorTelemetry> {
+    const logs = await this.repo.listIntegrationLogs({ connector: type }, 200);
+    const lastWebhook = logs.find((log) => log.direction === "incoming");
+    const lastIncomingSuccess = logs.find((log) => log.direction === "incoming" && log.status === "success");
+    const lastOutgoingSuccess = logs.find((log) => log.direction === "outgoing" && log.status === "success");
+    const lastWithLatency = logs.find((log) => typeof log.latencyMs === "number");
+    const lastErrorLog = logs.find((log) => log.status === "error");
+
+    return {
+      lastWebhookAt: lastWebhook?.createdAt ?? null,
+      lastIncomingMessageAt: lastIncomingSuccess?.createdAt ?? null,
+      lastOutgoingMessageAt: lastOutgoingSuccess?.createdAt ?? null,
+      lastLatencyMs: lastWithLatency?.latencyMs ?? null,
+      lastError: lastErrorLog ? { message: lastErrorLog.error ?? "unknown error", at: lastErrorLog.createdAt } : null,
+    };
   }
 
   isEnabled(type: ConnectorType): boolean {
