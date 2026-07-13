@@ -4,7 +4,12 @@ import type {
   AIReport,
   ApprovalRequest,
   ApprovalStatus,
+  ChatConversation,
+  ChatConversationStatus,
+  ConnectorType,
   ConversationLogEntry,
+  IntegrationDirection,
+  IntegrationLogEntry,
   JobStatus,
   NotificationMessage,
   QueueJob,
@@ -93,4 +98,22 @@ export interface Repository {
   // Conversation log (Sprint 3B — the verbatim prompt/response exchange per reasoning call)
   saveConversationLog(entry: ConversationLogEntry): Promise<ConversationLogEntry>;
   listConversationLogs(filter: { moduleId?: AIModuleId; runId?: string }, limit?: number): Promise<ConversationLogEntry[]>;
+
+  // Integration Layer (Sprint 4A — see packages/integrations). Every request
+  // that crosses a connector boundary, in either direction, gets one row here.
+  saveIntegrationLog(entry: IntegrationLogEntry): Promise<IntegrationLogEntry>;
+  listIntegrationLogs(
+    filter: { connector?: ConnectorType; direction?: IntegrationDirection; status?: IntegrationLogEntry["status"] },
+    limit?: number,
+  ): Promise<IntegrationLogEntry[]>;
+
+  // Chat conversations (Sprint 4A — Conversation Engine). One row per
+  // conversation, upserted by id as messages/status/routing change — mirrors
+  // updateApproval's "create if new, replace in place if known" pattern.
+  saveConversation(conversation: ChatConversation): Promise<ChatConversation>;
+  getConversation(id: string): Promise<ChatConversation | null>;
+  listConversations(
+    filter: { connector?: ConnectorType; status?: ChatConversationStatus; assignedAgent?: AIModuleId },
+    limit?: number,
+  ): Promise<ChatConversation[]>;
 }

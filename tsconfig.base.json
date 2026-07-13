@@ -35,7 +35,9 @@
       "@mkh/queue": ["packages/queue/src/index.ts"],
       "@mkh/queue/*": ["packages/queue/src/*"],
       "@mkh/monitoring": ["packages/monitoring/src/index.ts"],
-      "@mkh/monitoring/*": ["packages/monitoring/src/*"]
+      "@mkh/monitoring/*": ["packages/monitoring/src/*"],
+      "@mkh/integrations": ["packages/integrations/src/index.ts"],
+      "@mkh/integrations/*": ["packages/integrations/src/*"]
     }
   }
 }

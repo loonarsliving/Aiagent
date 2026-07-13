@@ -28,10 +28,13 @@ graph LR
     Monitoring["packages/monitoring<br/>(snapshot + health check)"] --> AIEngine
     Monitoring --> Queue
     Monitoring --> Notif
+    Integrations["packages/integrations<br/>(Connector Manager, Webhook/<br/>Notification/Conversation Engine,<br/>AI Router, Agent Registry)"] --> AIEngine
+    Integrations --> Queue
+    Integrations --> DB
     AIEngine --> Memory["packages/memory<br/>(KnowledgeBase, one per employee)"]
     AIEngine --> Security["packages/security<br/>(RBAC, approval gate)"]
     AIEngine --> Notif["packages/notifications<br/>(Notification Coordinator +<br/>Notification Queue)"]
-    AIEngine --> Connectors["packages/connectors<br/>(ports + mock adapters)"]
+    AIEngine --> Connectors["packages/connectors<br/>(ports + mock adapters —<br/>research/social/trend, NOT<br/>the same as packages/integrations)"]
     AIEngine --> DB["packages/database<br/>(Repository: dummy or supabase)"]
     AIEngine --> AIProvider["packages/ai-provider<br/>(AIProvider abstraction: Gemini active,<br/>Claude/OpenAI/Ollama stubs)"]
     Notif --> AIProvider
@@ -46,7 +49,18 @@ graph LR
     AIEngine --> Shared
     AIProvider --> Shared
     Queue --> Shared
+    Integrations --> Shared
 ```
+
+Sprint 4A ("Integration Layer, no external API" — see
+`docs/INTEGRATION_LAYER.md`) added `packages/integrations`: a unified
+`Connector` interface for WhatsApp/Telegram/Email/Meta/MK Connect/OTA, six
+fully-working mock implementations, a Connector Manager, a Webhook Engine,
+a channel-agnostic Notification Engine, a Conversation Engine, an AI
+Router, and an Agent Registry every digital employee self-registers into.
+`packages/connectors` (Sprint 1) is a different, unrelated system — mock
+research/social/trend data the AI employees themselves read, not
+messaging channels — the two were deliberately kept separate.
 
 Sprint 3B ("AI Infrastructure, no external API" — see
 `docs/INFRASTRUCTURE.md`) added `packages/queue` (the generic Job Queue and

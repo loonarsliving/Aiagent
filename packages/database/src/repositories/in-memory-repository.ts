@@ -4,7 +4,12 @@ import type {
   AIReport,
   ApprovalRequest,
   ApprovalStatus,
+  ChatConversation,
+  ChatConversationStatus,
+  ConnectorType,
   ConversationLogEntry,
+  IntegrationDirection,
+  IntegrationLogEntry,
   JobStatus,
   NotificationMessage,
   QueueJob,
@@ -47,6 +52,8 @@ export class InMemoryRepository implements Repository {
   private jobs: QueueJob[] = [];
   private locks = new Map<string, SchedulerLock>();
   private conversationLogs: ConversationLogEntry[] = [];
+  private integrationLogs: IntegrationLogEntry[] = [];
+  private conversations: ChatConversation[] = [];
   private readonly schedule: ScheduleEntry[] = DEFAULT_SCHEDULE;
   private readonly salesSnapshot: SalesSnapshot = seedSalesSnapshot();
   private readonly financeSnapshot: FinanceSnapshot = seedFinanceSnapshot();
@@ -241,6 +248,51 @@ export class InMemoryRepository implements Repository {
   async listConversationLogs(filter: { moduleId?: AIModuleId; runId?: string }, limit = 50): Promise<ConversationLogEntry[]> {
     const filtered = this.conversationLogs.filter(
       (e) => (!filter.moduleId || e.moduleId === filter.moduleId) && (!filter.runId || e.runId === filter.runId),
+    );
+    return filtered.slice(0, limit);
+  }
+
+  async saveIntegrationLog(entry: IntegrationLogEntry): Promise<IntegrationLogEntry> {
+    this.integrationLogs.unshift(entry);
+    return entry;
+  }
+
+  async listIntegrationLogs(
+    filter: { connector?: ConnectorType; direction?: IntegrationDirection; status?: IntegrationLogEntry["status"] },
+    limit = 100,
+  ): Promise<IntegrationLogEntry[]> {
+    const filtered = this.integrationLogs.filter(
+      (e) =>
+        (!filter.connector || e.connector === filter.connector) &&
+        (!filter.direction || e.direction === filter.direction) &&
+        (!filter.status || e.status === filter.status),
+    );
+    return filtered.slice(0, limit);
+  }
+
+  async saveConversation(conversation: ChatConversation): Promise<ChatConversation> {
+    const idx = this.conversations.findIndex((c) => c.id === conversation.id);
+    if (idx === -1) {
+      this.conversations.unshift(conversation);
+    } else {
+      this.conversations[idx] = conversation;
+    }
+    return conversation;
+  }
+
+  async getConversation(id: string): Promise<ChatConversation | null> {
+    return this.conversations.find((c) => c.id === id) ?? null;
+  }
+
+  async listConversations(
+    filter: { connector?: ConnectorType; status?: ChatConversationStatus; assignedAgent?: AIModuleId },
+    limit = 50,
+  ): Promise<ChatConversation[]> {
+    const filtered = this.conversations.filter(
+      (c) =>
+        (!filter.connector || c.connector === filter.connector) &&
+        (!filter.status || c.status === filter.status) &&
+        (!filter.assignedAgent || c.assignedAgent === filter.assignedAgent),
     );
     return filtered.slice(0, limit);
   }

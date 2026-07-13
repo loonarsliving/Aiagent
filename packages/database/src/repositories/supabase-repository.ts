@@ -5,7 +5,13 @@ import type {
   AIReport,
   ApprovalRequest,
   ApprovalStatus,
+  ChatConversation,
+  ChatConversationStatus,
+  ChatMessage,
+  ConnectorType,
   ConversationLogEntry,
+  IntegrationDirection,
+  IntegrationLogEntry,
   JobPriority,
   JobStatus,
   NotificationMessage,
@@ -465,6 +471,71 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(`Supabase query failed: ${error.message}`);
     return (data ?? []).map(mapConversationLogRow);
   }
+
+  async saveIntegrationLog(entry: IntegrationLogEntry): Promise<IntegrationLogEntry> {
+    await this.insert("integration_logs", {
+      id: entry.id,
+      connector: entry.connector,
+      direction: entry.direction,
+      payload: entry.payload,
+      status: entry.status,
+      response_status: entry.responseStatus ?? null,
+      error: entry.error ?? null,
+      created_at: entry.createdAt,
+    });
+    return entry;
+  }
+
+  async listIntegrationLogs(
+    filter: { connector?: ConnectorType; direction?: IntegrationDirection; status?: IntegrationLogEntry["status"] },
+    limit = 100,
+  ): Promise<IntegrationLogEntry[]> {
+    let query = this.client.from("integration_logs").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (filter.connector) query = query.eq("connector", filter.connector);
+    if (filter.direction) query = query.eq("direction", filter.direction);
+    if (filter.status) query = query.eq("status", filter.status);
+    const { data, error } = await query;
+    if (error) throw new Error(`Supabase query failed: ${error.message}`);
+    return (data ?? []).map(mapIntegrationLogRow);
+  }
+
+  async saveConversation(conversation: ChatConversation): Promise<ChatConversation> {
+    await this.upsert(
+      "chat_conversations",
+      {
+        id: conversation.id,
+        connector: conversation.connector,
+        sender: conversation.sender,
+        intent: conversation.intent,
+        assigned_agent: conversation.assignedAgent,
+        status: conversation.status,
+        history: conversation.history,
+        created_at: conversation.createdAt,
+        updated_at: conversation.updatedAt,
+      },
+      "id",
+    );
+    return conversation;
+  }
+
+  async getConversation(id: string): Promise<ChatConversation | null> {
+    const { data, error } = await this.client.from("chat_conversations").select("*").eq("id", id).maybeSingle();
+    if (error) throw new Error(`Supabase query failed: ${error.message}`);
+    return data ? mapChatConversationRow(data) : null;
+  }
+
+  async listConversations(
+    filter: { connector?: ConnectorType; status?: ChatConversationStatus; assignedAgent?: AIModuleId },
+    limit = 50,
+  ): Promise<ChatConversation[]> {
+    let query = this.client.from("chat_conversations").select("*").order("updated_at", { ascending: false }).limit(limit);
+    if (filter.connector) query = query.eq("connector", filter.connector);
+    if (filter.status) query = query.eq("status", filter.status);
+    if (filter.assignedAgent) query = query.eq("assigned_agent", filter.assignedAgent);
+    const { data, error } = await query;
+    if (error) throw new Error(`Supabase query failed: ${error.message}`);
+    return (data ?? []).map(mapChatConversationRow);
+  }
 }
 
 function toJobRow(job: QueueJob): Row {
@@ -518,6 +589,33 @@ export function mapConversationLogRow(row: Row): ConversationLogEntry {
     userPrompt: row.user_prompt as string,
     responseText: row.response_text as string,
     createdAt: row.created_at as string,
+  };
+}
+
+export function mapIntegrationLogRow(row: Row): IntegrationLogEntry {
+  return {
+    id: row.id as string,
+    connector: row.connector as ConnectorType,
+    direction: row.direction as IntegrationDirection,
+    payload: row.payload,
+    status: row.status as IntegrationLogEntry["status"],
+    responseStatus: (row.response_status as number | null) ?? undefined,
+    error: (row.error as string | null) ?? undefined,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function mapChatConversationRow(row: Row): ChatConversation {
+  return {
+    id: row.id as string,
+    connector: row.connector as ConnectorType,
+    sender: row.sender as string,
+    intent: (row.intent as string | null) ?? null,
+    assignedAgent: (row.assigned_agent as AIModuleId | null) ?? null,
+    status: row.status as ChatConversationStatus,
+    history: (row.history as ChatMessage[] | null) ?? [],
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
   };
 }
 

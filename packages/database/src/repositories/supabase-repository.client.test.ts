@@ -3,7 +3,9 @@ import type {
   AIReasoningLogEntry,
   AIReport,
   ApprovalRequest,
+  ChatConversation,
   ConversationLogEntry,
+  IntegrationLogEntry,
   NotificationMessage,
   QueueJob,
   ScheduleEntry,
@@ -677,5 +679,119 @@ describe("SupabaseRepository — conversation log", () => {
   it("listConversationLogs throws on a query error", async () => {
     const { repo } = withFakeClient({ conversation_logs: { data: null, error: { message: "boom" } } });
     await expect(repo.listConversationLogs({})).rejects.toThrow("boom");
+  });
+});
+
+describe("SupabaseRepository — integration logs (Sprint 4A)", () => {
+  function logRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "il_1",
+      connector: "whatsapp",
+      direction: "outgoing",
+      payload: { text: "hi" },
+      status: "success",
+      response_status: 200,
+      error: null,
+      created_at: "2026-07-14T00:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  function log(overrides: Partial<IntegrationLogEntry> = {}): IntegrationLogEntry {
+    return {
+      id: "il_1",
+      connector: "whatsapp",
+      direction: "outgoing",
+      payload: { text: "hi" },
+      status: "success",
+      createdAt: "2026-07-14T00:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  it("saveIntegrationLog inserts the row shape and returns the given entry", async () => {
+    const { repo, calls } = withFakeClient({ integration_logs: { data: null, error: null } });
+    const saved = await repo.saveIntegrationLog(log());
+    expect(saved.id).toBe("il_1");
+    expect(calls.integration_logs?.[0]?.op).toBe("insert");
+    expect((calls.integration_logs?.[0]?.row as Record<string, unknown>).connector).toBe("whatsapp");
+  });
+
+  it("listIntegrationLogs maps rows and applies connector/direction/status filters", async () => {
+    const { repo } = withFakeClient({ integration_logs: { data: [logRow()], error: null } });
+    expect(await repo.listIntegrationLogs({})).toHaveLength(1);
+    expect(await repo.listIntegrationLogs({ connector: "whatsapp" })).toHaveLength(1);
+    expect(await repo.listIntegrationLogs({ direction: "outgoing" })).toHaveLength(1);
+    expect(await repo.listIntegrationLogs({ status: "success" })).toHaveLength(1);
+  });
+
+  it("listIntegrationLogs throws on a query error", async () => {
+    const { repo } = withFakeClient({ integration_logs: { data: null, error: { message: "boom" } } });
+    await expect(repo.listIntegrationLogs({})).rejects.toThrow("boom");
+  });
+});
+
+describe("SupabaseRepository — chat conversations (Sprint 4A)", () => {
+  function conversationRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "conv_1",
+      connector: "whatsapp",
+      sender: "+62-812-0000",
+      intent: null,
+      assigned_agent: null,
+      status: "open",
+      history: [],
+      created_at: "2026-07-14T00:00:00.000Z",
+      updated_at: "2026-07-14T00:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  function conversation(overrides: Partial<ChatConversation> = {}): ChatConversation {
+    return {
+      id: "conv_1",
+      connector: "whatsapp",
+      sender: "+62-812-0000",
+      intent: null,
+      assignedAgent: null,
+      status: "open",
+      history: [],
+      createdAt: "2026-07-14T00:00:00.000Z",
+      updatedAt: "2026-07-14T00:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  it("saveConversation upserts on conflict id and returns the given conversation", async () => {
+    const { repo, calls } = withFakeClient({ chat_conversations: { data: null, error: null } });
+    expect((await repo.saveConversation(conversation())).id).toBe("conv_1");
+    expect(calls.chat_conversations?.[0]?.op).toBe("upsert");
+    expect(calls.chat_conversations?.[0]?.opts).toEqual({ onConflict: "id" });
+  });
+
+  it("getConversation maps a found row and returns null when missing", async () => {
+    const found = withFakeClient({ chat_conversations: { data: conversationRow(), error: null } });
+    expect((await found.repo.getConversation("conv_1"))?.sender).toBe("+62-812-0000");
+
+    const missing = withFakeClient({ chat_conversations: { data: null, error: null } });
+    expect(await missing.repo.getConversation("conv_x")).toBeNull();
+  });
+
+  it("getConversation throws on a query error", async () => {
+    const { repo } = withFakeClient({ chat_conversations: { data: null, error: { message: "boom" } } });
+    await expect(repo.getConversation("conv_1")).rejects.toThrow("boom");
+  });
+
+  it("listConversations maps rows and applies connector/status/assignedAgent filters", async () => {
+    const { repo } = withFakeClient({ chat_conversations: { data: [conversationRow()], error: null } });
+    expect(await repo.listConversations({})).toHaveLength(1);
+    expect(await repo.listConversations({ connector: "whatsapp" })).toHaveLength(1);
+    expect(await repo.listConversations({ status: "open" })).toHaveLength(1);
+    expect(await repo.listConversations({ assignedAgent: "hr-officer" })).toHaveLength(1);
+  });
+
+  it("listConversations throws on a query error", async () => {
+    const { repo } = withFakeClient({ chat_conversations: { data: null, error: { message: "boom" } } });
+    await expect(repo.listConversations({})).rejects.toThrow("boom");
   });
 });

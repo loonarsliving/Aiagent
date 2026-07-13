@@ -41,6 +41,9 @@ importers:
       '@mkh/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@mkh/integrations':
+        specifier: workspace:*
+        version: link:../../packages/integrations
       '@mkh/memory':
         specifier: workspace:*
         version: link:../../packages/memory
@@ -132,6 +135,21 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.45.4
         version: 2.110.2
+
+  packages/integrations:
+    dependencies:
+      '@mkh/ai-engine':
+        specifier: workspace:*
+        version: link:../ai-engine
+      '@mkh/database':
+        specifier: workspace:*
+        version: link:../database
+      '@mkh/queue':
+        specifier: workspace:*
+        version: link:../queue
+      '@mkh/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/mcp-server:
     dependencies:

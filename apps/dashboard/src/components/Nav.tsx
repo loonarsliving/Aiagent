@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/scheduler", label: "Scheduler" },
   { href: "/notifications", label: "Notifications" },
   { href: "/integrations", label: "Integrations" },
+  { href: "/admin/integrations", label: "AI Integrations" },
 ];
 
 export function Nav() {

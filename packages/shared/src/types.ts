@@ -405,3 +405,89 @@ export interface ConversationLogEntry {
   responseText: string;
   createdAt: string;
 }
+
+// ─── Sprint 4A — Integration Layer (interfaces + mocks, no external API) ─
+
+/**
+ * Every external channel this system will eventually speak to. The real
+ * WhatsApp Cloud API / Meta Marketing API / Telegram Bot API / an email
+ * provider / MK Connect / an OTA API each become one adapter implementing
+ * the same `Connector` interface (packages/integrations/src/connector.ts)
+ * — adding a 7th connector type here is the only change a 7th channel
+ * requires at the type level.
+ */
+export const CONNECTOR_TYPES = ["whatsapp", "telegram", "email", "meta", "mkconnect", "ota"] as const;
+export type ConnectorType = (typeof CONNECTOR_TYPES)[number];
+
+/**
+ * "mock" is distinct from "connected"/"disconnected" — it means the
+ * connector is fully operable (every capability works, requests/responses
+ * are logged) but backed by a mock implementation rather than a live
+ * external API, which is the state of every connector in this system today.
+ */
+export type ConnectorStatus = "connected" | "disconnected" | "mock" | "error";
+
+export type IntegrationDirection = "outgoing" | "incoming";
+
+/**
+ * One row per request that crossed a connector boundary, in either
+ * direction — Part 2's "store every outgoing request / every incoming
+ * request / response status / timestamps," all in one generic log rather
+ * than a table per connector per direction.
+ */
+export interface IntegrationLogEntry {
+  id: string;
+  connector: ConnectorType;
+  direction: IntegrationDirection;
+  /** The request body (outgoing) or the raw webhook payload (incoming). */
+  payload: unknown;
+  status: "success" | "error" | "pending";
+  /** An HTTP-style status code when the (mock) call models one — always synthetic today, never a real network response. */
+  responseStatus?: number;
+  error?: string;
+  createdAt: string;
+}
+
+/**
+ * A channel-agnostic outbound message body. Every connector's
+ * `sendMessage`/`sendMedia`/`sendTemplate`/`broadcast` accepts this same
+ * shape — the Notification Engine never special-cases WhatsApp (or any
+ * other channel) to decide what a "message" looks like.
+ */
+export type OutboundMessageContent =
+  | { kind: "text"; text: string }
+  | { kind: "image"; url: string; caption?: string }
+  | { kind: "pdf"; url: string; filename: string }
+  | { kind: "template"; templateName: string; params: Record<string, string> }
+  | { kind: "buttons"; text: string; buttons: { id: string; label: string }[] };
+
+export type ChatConversationStatus = "open" | "routed" | "closed";
+
+export interface ChatMessage {
+  id: string;
+  direction: IntegrationDirection;
+  content: OutboundMessageContent | { kind: "raw"; text: string };
+  createdAt: string;
+}
+
+/**
+ * Every incoming message becomes (or continues) exactly one of these —
+ * Part 8's Conversation Engine. `assignedAgent` is set once the AI Router
+ * (packages/integrations/src/ai-router.ts) resolves a destination worker;
+ * `null` means unrouted. Named `ChatConversation` (not `Conversation`) to
+ * stay unambiguous next to `ConversationLogEntry` above, which is a
+ * completely different thing (one AI reasoning call's prompt/response).
+ */
+export interface ChatConversation {
+  id: string;
+  connector: ConnectorType;
+  /** Opaque external identity — a WhatsApp phone number, a Telegram chat id, an email address. Never validated/parsed here; that's the connector's job. */
+  sender: string;
+  intent: string | null;
+  assignedAgent: AIModuleId | null;
+  status: ChatConversationStatus;
+  /** Oldest first. The most recent entry is "the message" that last changed this conversation's state. */
+  history: ChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+}

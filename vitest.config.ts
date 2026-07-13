@@ -21,6 +21,7 @@ export default defineConfig({
         "packages/notifications/src/channel.ts",
         "packages/connectors/src/ports/**/*.ts",
         "packages/ai-engine/src/core/ai-employee.ts",
+        "packages/integrations/src/connector.ts",
         // CLI/process entrypoints — thin main()+process.exit wrappers around
         // already-tested logic (triggerEmployee, runScheduledTask, the MCP
         // tool handlers), not meaningfully unit-testable themselves.

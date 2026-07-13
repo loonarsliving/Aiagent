@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AIReasoningLogEntry, AIReport, ApprovalRequest, ConversationLogEntry, QueueJob, WorkLogEntry } from "@mkh/shared";
+import type {
+  AIReasoningLogEntry,
+  AIReport,
+  ApprovalRequest,
+  ChatConversation,
+  ConversationLogEntry,
+  IntegrationLogEntry,
+  QueueJob,
+  WorkLogEntry,
+} from "@mkh/shared";
 import type { KnowledgeItem } from "../domain-types";
 import { InMemoryRepository } from "./in-memory-repository";
 
@@ -418,5 +427,83 @@ describe("InMemoryRepository — conversation log", () => {
 
     expect((await repo.listConversationLogs({ moduleId: "hr-officer" })).map((l) => l.id)).toEqual(["b"]);
     expect((await repo.listConversationLogs({ runId: "run_1" })).map((l) => l.id)).toEqual(["a"]);
+  });
+});
+
+describe("InMemoryRepository — integration logs (Sprint 4A)", () => {
+  let repo: InMemoryRepository;
+  beforeEach(() => (repo = new InMemoryRepository()));
+
+  function log(overrides: Partial<IntegrationLogEntry> = {}): IntegrationLogEntry {
+    return {
+      id: "il_1",
+      connector: "whatsapp",
+      direction: "outgoing",
+      payload: { text: "hi" },
+      status: "success",
+      createdAt: "2026-07-14T00:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  it("saves and lists integration logs, most recent first", async () => {
+    await repo.saveIntegrationLog(log({ id: "a" }));
+    await repo.saveIntegrationLog(log({ id: "b" }));
+    const logs = await repo.listIntegrationLogs({});
+    expect(logs.map((l) => l.id)).toEqual(["b", "a"]);
+  });
+
+  it("filters by connector, direction, and status independently", async () => {
+    await repo.saveIntegrationLog(log({ id: "a", connector: "whatsapp", direction: "outgoing", status: "success" }));
+    await repo.saveIntegrationLog(log({ id: "b", connector: "telegram", direction: "incoming", status: "error" }));
+
+    expect((await repo.listIntegrationLogs({ connector: "telegram" })).map((l) => l.id)).toEqual(["b"]);
+    expect((await repo.listIntegrationLogs({ direction: "outgoing" })).map((l) => l.id)).toEqual(["a"]);
+    expect((await repo.listIntegrationLogs({ status: "error" })).map((l) => l.id)).toEqual(["b"]);
+  });
+});
+
+describe("InMemoryRepository — chat conversations (Sprint 4A)", () => {
+  let repo: InMemoryRepository;
+  beforeEach(() => (repo = new InMemoryRepository()));
+
+  function conversation(overrides: Partial<ChatConversation> = {}): ChatConversation {
+    return {
+      id: "conv_1",
+      connector: "whatsapp",
+      sender: "+62-812-0000",
+      intent: null,
+      assignedAgent: null,
+      status: "open",
+      history: [],
+      createdAt: "2026-07-14T00:00:00.000Z",
+      updatedAt: "2026-07-14T00:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  it("saveConversation creates a new row and returns null from getConversation for an unknown id", async () => {
+    expect(await repo.getConversation("conv_1")).toBeNull();
+    await repo.saveConversation(conversation());
+    expect((await repo.getConversation("conv_1"))?.sender).toBe("+62-812-0000");
+  });
+
+  it("saveConversation replaces the existing record in place rather than duplicating it", async () => {
+    await repo.saveConversation(conversation({ status: "open" }));
+    await repo.saveConversation(conversation({ status: "routed", assignedAgent: "sales-supervisor" }));
+
+    const all = await repo.listConversations({});
+    expect(all).toHaveLength(1);
+    expect(all[0]?.status).toBe("routed");
+    expect(all[0]?.assignedAgent).toBe("sales-supervisor");
+  });
+
+  it("filters listConversations by connector, status, and assignedAgent independently", async () => {
+    await repo.saveConversation(conversation({ id: "a", connector: "whatsapp", status: "open", assignedAgent: null }));
+    await repo.saveConversation(conversation({ id: "b", connector: "telegram", status: "routed", assignedAgent: "hr-officer" }));
+
+    expect((await repo.listConversations({ connector: "telegram" })).map((c) => c.id)).toEqual(["b"]);
+    expect((await repo.listConversations({ status: "open" })).map((c) => c.id)).toEqual(["a"]);
+    expect((await repo.listConversations({ assignedAgent: "hr-officer" })).map((c) => c.id)).toEqual(["b"]);
   });
 });
