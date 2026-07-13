@@ -22,7 +22,7 @@ on top of this foundation.
 
 ```mermaid
 graph LR
-    Scheduler["packages/scheduler<br/>(cron + manual trigger)"] --> AIEngine["packages/ai-engine<br/>(10 AIEmployee implementations)"]
+    Scheduler["packages/scheduler<br/>(cron + manual trigger)"] --> AIEngine["packages/ai-engine<br/>(10 AIEmployee implementations<br/>+ reasoning/ Reasoning Engine)"]
     MCP["packages/mcp-server<br/>(read-only introspection)"] --> AIEngine
     MCP --> DB
     AIEngine --> Memory["packages/memory<br/>(KnowledgeBase, one per employee)"]
@@ -30,13 +30,21 @@ graph LR
     AIEngine --> Notif["packages/notifications<br/>(Notification Coordinator)"]
     AIEngine --> Connectors["packages/connectors<br/>(ports + mock adapters)"]
     AIEngine --> DB["packages/database<br/>(Repository: dummy or supabase)"]
+    AIEngine --> AIProvider["packages/ai-provider<br/>(AIProvider abstraction: Gemini active,<br/>Claude/OpenAI/Ollama stubs)"]
+    Notif --> AIProvider
     Memory --> DB
     Notif --> DB
     Security --> Shared["packages/shared<br/>(types, config, logger, timezone)"]
     DB --> Shared
     Connectors --> Shared
     AIEngine --> Shared
+    AIProvider --> Shared
 ```
+
+Note the arrow direction between `notifications` and `ai-provider`: `notifications`
+depends on `ai-provider` directly (not on `ai-engine`), specifically to avoid a
+cycle — `ai-engine` already depends on `notifications` (every employee calls
+`notify()`). See `docs/AI_PROVIDER.md` for why this matters.
 
 ## Why every package depends only downward
 
@@ -312,3 +320,33 @@ full list.
   raises warnings, but has no write path into any other employee's data.
 - RBAC (`@mkh/security/roles.ts`) gates `meta-ads:approve-action` to the
   `owner` role only; extend the table as more gated actions are added.
+
+## Sprint 2 — Intelligence Engine (AI reasoning layer)
+
+Sprint 2 adds a **thinking layer** on top of every Sprint 1 employee without
+changing any Sprint 1 architecture: `AIReport.data` is still 100%
+deterministic business logic, untouched; `AIReport.aiReasoning?` is a new,
+optional, additive field carrying the employee's AI-generated recommendation
+for that same run. Business logic (`logic.ts` files) has zero knowledge of
+any AI provider — every employee's `module.ts` calls exactly one function,
+`runReasoning()`, and nothing else.
+
+Five new focused documents cover this layer in depth:
+
+- **`docs/AI_PROVIDER.md`** — the plug-and-play `AIProvider` abstraction
+  (`packages/ai-provider`), why Gemini is the only active implementation,
+  and how Claude/OpenAI/Ollama are wired as guardrailed stubs for later.
+- **`docs/PROMPT_ENGINE.md`** — the 10-section structured prompt every
+  employee (+ Notification Coordinator) has, and how it's assembled.
+- **`docs/KNOWLEDGE_RETRIEVAL.md`** — the deterministic Retrieval Layer that
+  fetches only the top-K relevant knowledge items, never the whole
+  knowledge base.
+- **`docs/MEMORY_FLOW.md`** — how the Reasoning Engine remembers its own
+  past outputs, per employee, never shared.
+- **`docs/REASONING_FLOW.md`** — the fixed Observe → ... → Save Memory
+  pipeline every reasoning call runs through, including retry/error
+  handling and the audit log it always writes.
+
+See `docs/audits/SPRINT2_DOCUMENTATION.md` for the Sprint 2 completion
+status and the checklist of what remains before Sprint 2 can be declared
+CLOSED.

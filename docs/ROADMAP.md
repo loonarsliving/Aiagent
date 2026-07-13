@@ -6,10 +6,23 @@ Sprint 1 Final's checklist (all 11 required Digital Employees, retry
 strategy, manual trigger, per-employee memory, granular logging, 90%+ test
 coverage, updated documentation) is complete — see
 `docs/audits/SPRINT1_FINAL_AUDIT.md` for the full technical audit,
-scorecard, and evidence. The engineering foundation is now considered
-enterprise-ready for **Sprint 2: Gemini API integration**, which has not
-started — no Gemini, WhatsApp, Meta, OTA, or MK Connect API call exists
-anywhere in this repository yet.
+scorecard, and evidence.
+
+## Sprint 2 status: READY FOR FINAL VALIDATION 🟡
+
+The Intelligence Engine (AI Provider abstraction, Prompt Engine, Knowledge
+Retrieval Layer, Memory Flow, Reasoning Engine, Output Engine) is fully
+implemented, wired into all 10 employees + Notification Coordinator, and
+documented — see `docs/ARCHITECTURE.md`'s "Sprint 2 — Intelligence
+Engine" section and the five dedicated docs it links to. Gemini
+connectivity is verified live (health check + a raw `generate()` call both
+succeeded against the real API this sprint, and two real bugs found by
+that live testing are fixed). The one remaining item before Sprint 2 can
+be declared CLOSED is a full end-to-end live reasoning pipeline
+validation, blocked only by an exhausted daily API quota on the test key —
+see `docs/audits/SPRINT2_DOCUMENTATION.md` for the full evidence and the
+exact Final Validation Checklist to run once quota resets. Sprint 3 has
+not started.
 
 ## Direction (current)
 
@@ -76,25 +89,23 @@ below runs on mocked connectors and seeded/dummy data.
 
 ## Explicitly deferred (each requires separate, explicit Owner authorization)
 
-1. **Gemini API / any AI provider integration.** This is Sprint 2, not
-   started. No employee calls an LLM anywhere in this codebase yet.
-2. **Real connectors.** Wire one adapter at a time behind the existing
+1. **Real connectors.** Wire one adapter at a time behind the existing
    ports (`docs/CONNECTORS.md`) — Instagram/TikTok first (lowest risk,
    read-only), Meta Ads read next, Google Trends, OTA channel manager,
    then MK Connect.
-3. **Meta Ads execution.** Add a real `execute()` path only after Stage
+2. **Meta Ads execution.** Add a real `execute()` path only after Stage
    1's recommendations have been validated against real numbers for at
    least one reporting cycle. Bring back an execution-audit table at that
    point.
-4. **Notification channels.** WhatsApp/Telegram/Email/Push adapters exist
+3. **Notification channels.** WhatsApp/Telegram/Email/Push adapters exist
    as inert skeletons (`packages/notifications/src/channels/*.ts`,
    `TODO(integration)` markers) — fill in one at a time.
-5. **MK Connect integration.** Replace `getExternalSystemConnector()`'s
+4. **MK Connect integration.** Replace `getExternalSystemConnector()`'s
    guardrail adapter with a real client once authorized. This is also the
    point where Sales/Finance/HR snapshots and the Markom
    checklist-completion state switch from seed fixtures to real ERP data,
    and where `triggerEmployee()` gets its first real external caller.
-6. **Real infrastructure.** No live Supabase project or Vercel deployment
+5. **Real infrastructure.** No live Supabase project or Vercel deployment
    exists — code is Supabase-ready (`DATA_MODE=supabase`,
    `supabase/migrations/`) and has an HTTP cron endpoint ready
    (`apps/dashboard/src/app/api/cron/[moduleId]`), but neither is
