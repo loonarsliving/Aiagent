@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { AIReasoningLogEntry, AIReport, ApprovalRequest, NotificationMessage, ScheduleEntry, ScheduleRunRecord, WorkLogEntry } from "@mkh/shared";
+import type {
+  AIReasoningLogEntry,
+  AIReport,
+  ApprovalRequest,
+  ConversationLogEntry,
+  NotificationMessage,
+  QueueJob,
+  ScheduleEntry,
+  ScheduleRunRecord,
+  SchedulerLock,
+  WorkLogEntry,
+} from "@mkh/shared";
 import type { KnowledgeItem } from "../domain-types";
 import { SupabaseRepository } from "./supabase-repository";
 
@@ -18,20 +29,41 @@ interface FakeResult {
   error: { message: string } | null;
 }
 
-function createFakeClient(resultByTable: Record<string, FakeResult>) {
-  const calls: Record<string, { op: string; row?: unknown; opts?: unknown }[]> = {};
+/**
+ * Most methods make a single `.from(table)` call, so a single FakeResult
+ * per table is enough. `claimNextPendingJob` makes two sequential calls to
+ * the same table (select the candidate, then conditionally update it) that
+ * need different responses — pass an array to have each successive call
+ * against that table consume the next entry (the last entry repeats for
+ * any further calls).
+ */
+function createFakeClient(resultByTable: Record<string, FakeResult | FakeResult[]>, rpcResultByFn: Record<string, FakeResult> = {}) {
+  const calls: Record<string, { op: string; row?: unknown; opts?: unknown; args?: unknown }[]> = {};
+  const callIndexByTable: Record<string, number> = {};
 
-  function record(table: string, op: string, row?: unknown, opts?: unknown) {
-    (calls[table] ??= []).push({ op, row, opts });
+  function record(table: string, op: string, row?: unknown, opts?: unknown, args?: unknown) {
+    (calls[table] ??= []).push({ op, row, opts, args });
+  }
+
+  function nextResult(table: string): FakeResult {
+    const raw = resultByTable[table];
+    const list = Array.isArray(raw) ? raw : raw ? [raw] : [{ data: null, error: null }];
+    const idx = callIndexByTable[table] ?? 0;
+    callIndexByTable[table] = idx + 1;
+    return list[Math.min(idx, list.length - 1)] ?? { data: null, error: null };
   }
 
   function builder(table: string) {
-    const result = resultByTable[table] ?? { data: null, error: null };
     const chain: Record<string, unknown> = {
       select: () => chain,
       eq: () => chain,
+      lte: () => chain,
       order: () => chain,
       limit: () => chain,
+      delete: () => {
+        record(table, "delete");
+        return chain;
+      },
       insert: (row: unknown) => {
         record(table, "insert", row);
         return chain;
@@ -44,19 +76,24 @@ function createFakeClient(resultByTable: Record<string, FakeResult>) {
         record(table, "update", row);
         return chain;
       },
-      maybeSingle: () => Promise.resolve(result),
-      single: () => Promise.resolve(result),
-      then: (resolve: (v: FakeResult) => void, reject: (e: unknown) => void) => Promise.resolve(result).then(resolve, reject),
+      maybeSingle: () => Promise.resolve(nextResult(table)),
+      single: () => Promise.resolve(nextResult(table)),
+      then: (resolve: (v: FakeResult) => void, reject: (e: unknown) => void) => Promise.resolve(nextResult(table)).then(resolve, reject),
     };
     return chain;
   }
 
-  return { client: { from: builder }, calls };
+  function rpc(fnName: string, args: unknown) {
+    record(`rpc:${fnName}`, "rpc", undefined, undefined, args);
+    return Promise.resolve(rpcResultByFn[fnName] ?? { data: null, error: null });
+  }
+
+  return { client: { from: builder, rpc }, calls };
 }
 
-function withFakeClient(resultByTable: Record<string, FakeResult>) {
+function withFakeClient(resultByTable: Record<string, FakeResult | FakeResult[]>, rpcResultByFn: Record<string, FakeResult> = {}) {
   const repo = new SupabaseRepository("https://example.supabase.co", "test-service-key");
-  const { client, calls } = createFakeClient(resultByTable);
+  const { client, calls } = createFakeClient(resultByTable, rpcResultByFn);
   (repo as unknown as { client: unknown }).client = client;
   return { repo, calls };
 }
@@ -411,5 +448,234 @@ describe("SupabaseRepository — AI reasoning logs", () => {
   it("listAIReasoningLogs throws on a query error", async () => {
     const { repo } = withFakeClient({ ai_reasoning_logs: { data: null, error: { message: "boom" } } });
     await expect(repo.listAIReasoningLogs({})).rejects.toThrow("boom");
+  });
+});
+
+describe("SupabaseRepository — job queue", () => {
+  function jobRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "job_1",
+      type: "notification-dispatch",
+      payload: { foo: "bar" },
+      priority: "normal",
+      priority_rank: 2,
+      status: "pending",
+      run_at: "2026-07-13T00:00:00.000Z",
+      attempts: 0,
+      max_attempts: 3,
+      last_error: null,
+      created_at: "2026-07-13T00:00:00.000Z",
+      updated_at: "2026-07-13T00:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  function job(overrides: Partial<QueueJob> = {}): QueueJob {
+    return {
+      id: "job_1",
+      type: "notification-dispatch",
+      payload: { foo: "bar" },
+      priority: "normal",
+      status: "pending",
+      runAt: "2026-07-13T00:00:00.000Z",
+      attempts: 0,
+      maxAttempts: 3,
+      createdAt: "2026-07-13T00:00:00.000Z",
+      updatedAt: "2026-07-13T00:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  it("enqueueJob inserts the row shape including the derived priority_rank", async () => {
+    const { repo, calls } = withFakeClient({ jobs: { data: null, error: null } });
+    await repo.enqueueJob(job({ priority: "urgent" }));
+    const row = calls.jobs?.[0]?.row as Record<string, unknown>;
+    expect(calls.jobs?.[0]?.op).toBe("insert");
+    expect(row.priority).toBe("urgent");
+    expect(row.priority_rank).toBe(0);
+  });
+
+  it("getJob maps a found row and returns null when missing", async () => {
+    const found = withFakeClient({ jobs: { data: jobRow(), error: null } });
+    expect((await found.repo.getJob("job_1"))?.status).toBe("pending");
+
+    const missing = withFakeClient({ jobs: { data: null, error: null } });
+    expect(await missing.repo.getJob("job_x")).toBeNull();
+  });
+
+  it("getJob throws on a query error", async () => {
+    const { repo } = withFakeClient({ jobs: { data: null, error: { message: "boom" } } });
+    await expect(repo.getJob("job_1")).rejects.toThrow("boom");
+  });
+
+  it("listJobs maps rows, with and without status/type filters", async () => {
+    const { repo } = withFakeClient({ jobs: { data: [jobRow(), jobRow({ id: "job_2" })], error: null } });
+    expect(await repo.listJobs({})).toHaveLength(2);
+    expect(await repo.listJobs({ status: "pending", type: "notification-dispatch" })).toHaveLength(2);
+  });
+
+  it("listJobs throws on a query error", async () => {
+    const { repo } = withFakeClient({ jobs: { data: null, error: { message: "boom" } } });
+    await expect(repo.listJobs({})).rejects.toThrow("boom");
+  });
+
+  it("updateJob sends the patch and maps the returned row", async () => {
+    const { repo, calls } = withFakeClient({ jobs: { data: jobRow({ attempts: 1, last_error: "boom" }), error: null } });
+    const updated = await repo.updateJob("job_1", { attempts: 1, lastError: "boom" });
+    expect(updated.attempts).toBe(1);
+    expect(calls.jobs?.[0]?.op).toBe("update");
+  });
+
+  it("updateJob throws on a query error", async () => {
+    const { repo } = withFakeClient({ jobs: { data: null, error: { message: "boom" } } });
+    await expect(repo.updateJob("job_1", { attempts: 1 })).rejects.toThrow("boom");
+  });
+
+  it("claimNextPendingJob returns null when no candidate is due", async () => {
+    const { repo } = withFakeClient({ jobs: { data: null, error: null } });
+    expect(await repo.claimNextPendingJob(undefined, "2026-07-13T00:00:00.000Z")).toBeNull();
+  });
+
+  it("claimNextPendingJob throws when the candidate select errors", async () => {
+    const { repo } = withFakeClient({ jobs: { data: null, error: { message: "boom" } } });
+    await expect(repo.claimNextPendingJob(undefined, "2026-07-13T00:00:00.000Z")).rejects.toThrow("boom");
+  });
+
+  it("claims the candidate by conditionally updating it and maps the result", async () => {
+    const { repo } = withFakeClient({
+      jobs: [
+        { data: jobRow({ id: "job_1" }), error: null },
+        { data: jobRow({ id: "job_1", status: "running" }), error: null },
+      ],
+    });
+    const claimed = await repo.claimNextPendingJob("notification-dispatch", "2026-07-13T01:00:00.000Z");
+    expect(claimed?.id).toBe("job_1");
+    expect(claimed?.status).toBe("running");
+  });
+
+  it("returns null when the conditional update loses the race (already claimed by another caller)", async () => {
+    const { repo } = withFakeClient({
+      jobs: [
+        { data: jobRow({ id: "job_1" }), error: null },
+        { data: null, error: null },
+      ],
+    });
+    expect(await repo.claimNextPendingJob(undefined, "2026-07-13T01:00:00.000Z")).toBeNull();
+  });
+
+  it("throws when the conditional update errors", async () => {
+    const { repo } = withFakeClient({
+      jobs: [
+        { data: jobRow({ id: "job_1" }), error: null },
+        { data: null, error: { message: "boom" } },
+      ],
+    });
+    await expect(repo.claimNextPendingJob(undefined, "2026-07-13T01:00:00.000Z")).rejects.toThrow("boom");
+  });
+});
+
+describe("SupabaseRepository — distributed scheduler lock", () => {
+  function lockRow(overrides: Record<string, unknown> = {}) {
+    return {
+      lock_key: "scheduler:finance-analyst",
+      holder_id: "holder-1",
+      acquired_at: "2026-07-13T00:00:00.000Z",
+      expires_at: "2026-07-13T01:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  it("acquireLock calls the RPC with the given key/holder/expiry and returns its boolean result", async () => {
+    const { repo, calls } = withFakeClient({}, { acquire_scheduler_lock: { data: true, error: null } });
+    const ok = await repo.acquireLock("scheduler:finance-analyst", "holder-1", "2026-07-13T01:00:00.000Z");
+    expect(ok).toBe(true);
+    expect(calls["rpc:acquire_scheduler_lock"]?.[0]?.args).toEqual({
+      p_lock_key: "scheduler:finance-analyst",
+      p_holder_id: "holder-1",
+      p_expires_at: "2026-07-13T01:00:00.000Z",
+    });
+  });
+
+  it("acquireLock returns false when the RPC reports the lock is held elsewhere", async () => {
+    const { repo } = withFakeClient({}, { acquire_scheduler_lock: { data: false, error: null } });
+    expect(await repo.acquireLock("scheduler:finance-analyst", "holder-2", "2026-07-13T01:00:00.000Z")).toBe(false);
+  });
+
+  it("acquireLock throws on an RPC error", async () => {
+    const { repo } = withFakeClient({}, { acquire_scheduler_lock: { data: null, error: { message: "boom" } } });
+    await expect(repo.acquireLock("scheduler:finance-analyst", "holder-1", "2026-07-13T01:00:00.000Z")).rejects.toThrow("boom");
+  });
+
+  it("releaseLock issues a delete scoped to both lock_key and holder_id", async () => {
+    const { repo, calls } = withFakeClient({ scheduler_locks: { data: null, error: null } });
+    await repo.releaseLock("scheduler:finance-analyst", "holder-1");
+    expect(calls.scheduler_locks?.[0]?.op).toBe("delete");
+  });
+
+  it("releaseLock throws on a query error", async () => {
+    const { repo } = withFakeClient({ scheduler_locks: { data: null, error: { message: "boom" } } });
+    await expect(repo.releaseLock("scheduler:finance-analyst", "holder-1")).rejects.toThrow("boom");
+  });
+
+  it("getLock maps a found row and returns null when missing", async () => {
+    const found = withFakeClient({ scheduler_locks: { data: lockRow(), error: null } });
+    const lock = (await found.repo.getLock("scheduler:finance-analyst")) as SchedulerLock;
+    expect(lock.holderId).toBe("holder-1");
+
+    const missing = withFakeClient({ scheduler_locks: { data: null, error: null } });
+    expect(await missing.repo.getLock("scheduler:finance-analyst")).toBeNull();
+  });
+
+  it("getLock throws on a query error", async () => {
+    const { repo } = withFakeClient({ scheduler_locks: { data: null, error: { message: "boom" } } });
+    await expect(repo.getLock("scheduler:finance-analyst")).rejects.toThrow("boom");
+  });
+});
+
+describe("SupabaseRepository — conversation log", () => {
+  function entryRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "conv_1",
+      module_id: "finance-analyst",
+      run_id: "run_1",
+      system_prompt: "system",
+      user_prompt: "user",
+      response_text: "response",
+      created_at: "2026-07-13T00:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  function entry(overrides: Partial<ConversationLogEntry> = {}): ConversationLogEntry {
+    return {
+      id: "conv_1",
+      moduleId: "finance-analyst",
+      runId: "run_1",
+      systemPrompt: "system",
+      userPrompt: "user",
+      responseText: "response",
+      createdAt: "2026-07-13T00:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  it("saveConversationLog inserts the row shape and returns the given entry", async () => {
+    const { repo, calls } = withFakeClient({ conversation_logs: { data: null, error: null } });
+    const saved = await repo.saveConversationLog(entry());
+    expect(saved.id).toBe("conv_1");
+    expect(calls.conversation_logs?.[0]?.op).toBe("insert");
+    expect((calls.conversation_logs?.[0]?.row as Record<string, unknown>).module_id).toBe("finance-analyst");
+  });
+
+  it("listConversationLogs maps rows and applies moduleId/runId filters", async () => {
+    const { repo } = withFakeClient({ conversation_logs: { data: [entryRow()], error: null } });
+    expect(await repo.listConversationLogs({})).toHaveLength(1);
+    expect(await repo.listConversationLogs({ moduleId: "finance-analyst" })).toHaveLength(1);
+    expect(await repo.listConversationLogs({ runId: "run_1" })).toHaveLength(1);
+  });
+
+  it("listConversationLogs throws on a query error", async () => {
+    const { repo } = withFakeClient({ conversation_logs: { data: null, error: { message: "boom" } } });
+    await expect(repo.listConversationLogs({})).rejects.toThrow("boom");
   });
 });

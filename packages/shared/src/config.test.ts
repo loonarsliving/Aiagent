@@ -21,6 +21,9 @@ const ENV_KEYS = [
   "AI_SAFETY_THRESHOLD",
   "AI_RETRIEVAL_TOP_K",
   "NOTIFY_AI_REFINEMENT_ENABLED",
+  "QUEUE_MAX_ATTEMPTS",
+  "QUEUE_RETRY_BACKOFF_MS",
+  "SCHEDULER_LOCK_TTL_MS",
   "COMPANY_NAME",
   "COMPANY_INDUSTRY",
   "COMPANY_TIMEZONE",
@@ -153,6 +156,24 @@ describe("getConfig", () => {
     process.env.NOTIFY_AI_REFINEMENT_ENABLED = "1";
     resetConfigCache();
     expect(getConfig().NOTIFY_AI_REFINEMENT_ENABLED).toBe(true);
+  });
+
+  it("defaults the Job Queue and Scheduler Lock infrastructure settings (Sprint 3B)", () => {
+    const config = getConfig();
+    expect(config.QUEUE_MAX_ATTEMPTS).toBe(5);
+    expect(config.QUEUE_RETRY_BACKOFF_MS).toBe(1_000);
+    expect(config.SCHEDULER_LOCK_TTL_MS).toBe(300_000);
+  });
+
+  it("coerces the Sprint 3B infrastructure settings from string env vars", () => {
+    process.env.QUEUE_MAX_ATTEMPTS = "8";
+    process.env.QUEUE_RETRY_BACKOFF_MS = "2000";
+    process.env.SCHEDULER_LOCK_TTL_MS = "60000";
+    resetConfigCache();
+    const config = getConfig();
+    expect(config.QUEUE_MAX_ATTEMPTS).toBe(8);
+    expect(config.QUEUE_RETRY_BACKOFF_MS).toBe(2_000);
+    expect(config.SCHEDULER_LOCK_TTL_MS).toBe(60_000);
   });
 
   it("defaults the company profile to PT Maha Karya Haluoleo's real values (Sprint 3A: no hardcoded business values in code)", () => {

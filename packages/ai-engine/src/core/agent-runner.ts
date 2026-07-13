@@ -1,13 +1,9 @@
-import { createLogger, generateId, getConfig, type AIReport, type AIRunContext, type TaskCadence } from "@mkh/shared";
+import { computeBackoffMs, createLogger, generateId, getConfig, sleep, type AIReport, type AIRunContext, type TaskCadence } from "@mkh/shared";
 import { getRepository } from "@mkh/database";
 import type { AIEmployee } from "./ai-employee";
 import { createWorkLogger } from "./work-logger";
 
 const logger = createLogger("ai-engine:runner");
-
-function sleep(ms: number): Promise<void> {
-  return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
-}
 
 function buildFailureReport<TData>(
   employee: AIEmployee<TData>,
@@ -93,7 +89,7 @@ export async function runEmployeeTask<TData>(
 
       await attemptLog.step("retry", `Percobaan ${attempt + 1} gagal: ${lastError}. Mencoba lagi...`, "retry");
       logger.warn("employee task attempt failed, retrying", { moduleId: employee.id, cadence, attempt, error: lastError });
-      await sleep(RETRY_BACKOFF_MS * 2 ** attempt);
+      await sleep(computeBackoffMs(RETRY_BACKOFF_MS, attempt));
     }
   }
 

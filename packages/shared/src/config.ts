@@ -48,6 +48,14 @@ const envSchema = z.object({
     .transform((v) => v !== "false")
     .pipe(z.boolean()),
 
+  // --- AI Infrastructure (Sprint 3B — Job Queue / Distributed Scheduler) --
+  /** Default max attempts for a queued job (Job Queue), including the first try, before it moves to the Dead Letter Queue. Independent of MAX_RETRY_ATTEMPTS (employee task retries) and AI_RETRY_ATTEMPTS (single reasoning call retries) — this one governs queued async work (e.g. notification dispatch). */
+  QUEUE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(5),
+  /** Base backoff in ms before a failed job is retried; doubles each attempt via computeBackoffMs. */
+  QUEUE_RETRY_BACKOFF_MS: z.coerce.number().int().min(0).max(300_000).default(1_000),
+  /** How long a distributed scheduler lock lease lasts before it's considered expired and reclaimable by another holder (crash recovery window). */
+  SCHEDULER_LOCK_TTL_MS: z.coerce.number().int().min(1_000).max(3_600_000).default(300_000),
+
   // --- Company profile (Sprint 3A — no hardcoded business values) --------
   /** Grounding fact every Reasoning Engine prompt includes — never hardcoded, see company-context.ts. */
   COMPANY_NAME: z.string().default("PT Maha Karya Haluoleo"),
@@ -92,6 +100,9 @@ export function getConfig(): AppConfig {
       AI_SAFETY_THRESHOLD: process.env.AI_SAFETY_THRESHOLD,
       AI_RETRIEVAL_TOP_K: process.env.AI_RETRIEVAL_TOP_K,
       NOTIFY_AI_REFINEMENT_ENABLED: process.env.NOTIFY_AI_REFINEMENT_ENABLED,
+      QUEUE_MAX_ATTEMPTS: process.env.QUEUE_MAX_ATTEMPTS,
+      QUEUE_RETRY_BACKOFF_MS: process.env.QUEUE_RETRY_BACKOFF_MS,
+      SCHEDULER_LOCK_TTL_MS: process.env.SCHEDULER_LOCK_TTL_MS,
       COMPANY_NAME: process.env.COMPANY_NAME,
       COMPANY_INDUSTRY: process.env.COMPANY_INDUSTRY,
       COMPANY_TIMEZONE: process.env.COMPANY_TIMEZONE,

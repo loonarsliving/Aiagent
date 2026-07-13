@@ -1,10 +1,13 @@
 import {
+  computeBackoffMs,
   generateId,
   getConfig,
+  sleep,
   type AIModuleId,
   type AIReasoningLogEntry,
   type AIProviderName,
   type ApprovalLevel,
+  type ConversationLogEntry,
   type GovernanceProfile,
   type ReasoningOutput,
   type ReasoningResult,
@@ -28,10 +31,6 @@ export interface ReasoningInput {
   contextData?: Record<string, unknown>;
   /** Optional keyword hint for the Retrieval Layer; defaults to `observation`. */
   knowledgeQuery?: string;
-}
-
-function sleep(ms: number): Promise<void> {
-  return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 }
 
 /**
@@ -100,6 +99,8 @@ export async function runReasoning(
   let modelUsed = "unknown";
   let tokenUsage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } = {};
   let parsedOutput: ReturnType<typeof parseReasoningOutput>["output"];
+  /** The last raw provider response text seen, success or not — feeds the ConversationLogEntry below so a failed/malformed reasoning attempt is still replayable for debugging, not just the successful ones. */
+  let lastResponseText = "";
 
   for (; attempt < config.AI_RETRY_ATTEMPTS; attempt++) {
     try {
@@ -109,6 +110,7 @@ export async function runReasoning(
       totalResponseTimeMs += response.responseTimeMs;
       modelUsed = response.model;
       tokenUsage = response.tokensUsed ?? {};
+      lastResponseText = response.text;
 
       const parsed = parseReasoningOutput(response.text);
       if (!parsed.success || !parsed.output) {
@@ -132,7 +134,7 @@ export async function runReasoning(
       }
 
       await log.step("reasoning_reason", `Percobaan ${attempt + 1} gagal: ${lastErrorReason}. Mencoba lagi...`, "retry");
-      await sleep(config.AI_RETRY_BACKOFF_MS * 2 ** attempt);
+      await sleep(computeBackoffMs(config.AI_RETRY_BACKOFF_MS, attempt));
     }
   }
 
@@ -147,6 +149,24 @@ export async function runReasoning(
     await log.step("reasoning_generate_notification", `Notification object dibuat untuk ${notification.recipient} (priority: ${notification.priority})`);
 
     governedOutput = { ...parsedOutput, approvalLevel, notification };
+  }
+
+  // Conversation log (Sprint 3B) — the verbatim prompt/response exchange, kept
+  // separate from the metadata-only audit log below so a specific decision can
+  // be replayed/debugged without bloating routine audit-log queries. Only
+  // written when the provider actually returned text — a total connection
+  // failure (no response at all) has nothing worth persisting here.
+  if (lastResponseText) {
+    const conversationLog: ConversationLogEntry = {
+      id: generateId("conv"),
+      moduleId: input.moduleId,
+      runId,
+      systemPrompt,
+      userPrompt,
+      responseText: lastResponseText,
+      createdAt: new Date().toISOString(),
+    };
+    await repo.saveConversationLog(conversationLog);
   }
 
   // 10. Audit Log — one row per reasoning attempt sequence, success or failure either way.

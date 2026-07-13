@@ -31,7 +31,11 @@
       "@mkh/ai-provider": ["packages/ai-provider/src/index.ts"],
       "@mkh/ai-provider/*": ["packages/ai-provider/src/*"],
       "@mkh/scheduler": ["packages/scheduler/src/index.ts"],
-      "@mkh/scheduler/*": ["packages/scheduler/src/*"]
+      "@mkh/scheduler/*": ["packages/scheduler/src/*"],
+      "@mkh/queue": ["packages/queue/src/index.ts"],
+      "@mkh/queue/*": ["packages/queue/src/*"],
+      "@mkh/monitoring": ["packages/monitoring/src/index.ts"],
+      "@mkh/monitoring/*": ["packages/monitoring/src/*"]
     }
   }
 }

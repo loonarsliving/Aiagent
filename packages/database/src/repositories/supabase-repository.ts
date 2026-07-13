@@ -5,13 +5,19 @@ import type {
   AIReport,
   ApprovalRequest,
   ApprovalStatus,
+  ConversationLogEntry,
+  JobPriority,
+  JobStatus,
   NotificationMessage,
+  QueueJob,
   ScheduleEntry,
   ScheduleRunRecord,
+  SchedulerLock,
   TaskCadence,
   WorkLogEntry,
 } from "@mkh/shared";
 import type { Repository } from "../repository";
+import { PRIORITY_RANK } from "../priority-rank";
 import type {
   FinanceSnapshot,
   HRSnapshot,
@@ -333,6 +339,186 @@ export class SupabaseRepository implements Repository {
     if (error) throw new Error(`Supabase query failed: ${error.message}`);
     return (data ?? []).map(mapAIReasoningLogRow);
   }
+
+  async enqueueJob(job: QueueJob): Promise<QueueJob> {
+    await this.insert("jobs", toJobRow(job));
+    return job;
+  }
+
+  async getJob(id: string): Promise<QueueJob | null> {
+    const { data, error } = await this.client.from("jobs").select("*").eq("id", id).maybeSingle();
+    if (error) throw new Error(`Supabase query failed: ${error.message}`);
+    return data ? mapJobRow(data) : null;
+  }
+
+  async listJobs(filter: { status?: JobStatus; type?: string }, limit = 100): Promise<QueueJob[]> {
+    let query = this.client.from("jobs").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (filter.status) query = query.eq("status", filter.status);
+    if (filter.type) query = query.eq("type", filter.type);
+    const { data, error } = await query;
+    if (error) throw new Error(`Supabase query failed: ${error.message}`);
+    return (data ?? []).map(mapJobRow);
+  }
+
+  async updateJob(id: string, patch: Partial<QueueJob>): Promise<QueueJob> {
+    const { data, error } = await this.client
+      .from("jobs")
+      .update({
+        status: patch.status ?? undefined,
+        priority: patch.priority ?? undefined,
+        priority_rank: patch.priority ? PRIORITY_RANK[patch.priority] : undefined,
+        run_at: patch.runAt ?? undefined,
+        attempts: patch.attempts ?? undefined,
+        last_error: patch.lastError ?? undefined,
+        updated_at: patch.updatedAt ?? undefined,
+      })
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) throw new Error(`Supabase update failed: ${error.message}`);
+    return mapJobRow(data);
+  }
+
+  /**
+   * Best-effort claim: selects the top candidate client-side, then updates
+   * it conditionally on status still being "pending" so a losing
+   * concurrent claim affects 0 rows rather than double-claiming. Weaker
+   * than a `FOR UPDATE SKIP LOCKED` stored procedure (worth adding once
+   * job volume justifies the ops cost of a dedicated Postgres function) —
+   * unlike the scheduler lock below, a job being claimed twice is a
+   * tolerable, low-stakes race (worst case: a job runs twice), so the
+   * lighter-weight approach is a deliberate trade-off here.
+   */
+  async claimNextPendingJob(type: string | undefined, now: string): Promise<QueueJob | null> {
+    let query = this.client
+      .from("jobs")
+      .select("*")
+      .eq("status", "pending")
+      .lte("run_at", now)
+      .order("priority_rank", { ascending: true })
+      .order("run_at", { ascending: true })
+      .limit(1);
+    if (type) query = query.eq("type", type);
+    const { data: candidate, error } = await query.maybeSingle();
+    if (error) throw new Error(`Supabase query failed: ${error.message}`);
+    if (!candidate) return null;
+
+    const { data: claimed, error: updateError } = await this.client
+      .from("jobs")
+      .update({ status: "running", updated_at: now })
+      .eq("id", candidate.id as string)
+      .eq("status", "pending")
+      .select()
+      .maybeSingle();
+    if (updateError) throw new Error(`Supabase update failed: ${updateError.message}`);
+    return claimed ? mapJobRow(claimed) : null;
+  }
+
+  /**
+   * Atomic — backed by the `acquire_scheduler_lock` Postgres function
+   * (supabase/migrations), not a check-then-write from this client. This
+   * is the one Sprint 3B primitive where a race condition would have a
+   * genuinely bad outcome (two processes both believing they alone should
+   * run an employee), so it gets the stronger guarantee; see
+   * `claimNextPendingJob` above for why the job queue doesn't need the
+   * same treatment.
+   */
+  async acquireLock(lockKey: string, holderId: string, expiresAt: string): Promise<boolean> {
+    const { data, error } = await this.client.rpc("acquire_scheduler_lock", {
+      p_lock_key: lockKey,
+      p_holder_id: holderId,
+      p_expires_at: expiresAt,
+    });
+    if (error) throw new Error(`Supabase RPC acquire_scheduler_lock failed: ${error.message}`);
+    return Boolean(data);
+  }
+
+  async releaseLock(lockKey: string, holderId: string): Promise<void> {
+    const { error } = await this.client.from("scheduler_locks").delete().eq("lock_key", lockKey).eq("holder_id", holderId);
+    if (error) throw new Error(`Supabase delete failed: ${error.message}`);
+  }
+
+  async getLock(lockKey: string): Promise<SchedulerLock | null> {
+    const { data, error } = await this.client.from("scheduler_locks").select("*").eq("lock_key", lockKey).maybeSingle();
+    if (error) throw new Error(`Supabase query failed: ${error.message}`);
+    return data ? mapSchedulerLockRow(data) : null;
+  }
+
+  async saveConversationLog(entry: ConversationLogEntry): Promise<ConversationLogEntry> {
+    await this.insert("conversation_logs", {
+      id: entry.id,
+      module_id: entry.moduleId,
+      run_id: entry.runId,
+      system_prompt: entry.systemPrompt,
+      user_prompt: entry.userPrompt,
+      response_text: entry.responseText,
+      created_at: entry.createdAt,
+    });
+    return entry;
+  }
+
+  async listConversationLogs(filter: { moduleId?: AIModuleId; runId?: string }, limit = 50): Promise<ConversationLogEntry[]> {
+    let query = this.client.from("conversation_logs").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (filter.moduleId) query = query.eq("module_id", filter.moduleId);
+    if (filter.runId) query = query.eq("run_id", filter.runId);
+    const { data, error } = await query;
+    if (error) throw new Error(`Supabase query failed: ${error.message}`);
+    return (data ?? []).map(mapConversationLogRow);
+  }
+}
+
+function toJobRow(job: QueueJob): Row {
+  return {
+    id: job.id,
+    type: job.type,
+    payload: job.payload,
+    priority: job.priority,
+    priority_rank: PRIORITY_RANK[job.priority],
+    status: job.status,
+    run_at: job.runAt,
+    attempts: job.attempts,
+    max_attempts: job.maxAttempts,
+    last_error: job.lastError ?? null,
+    created_at: job.createdAt,
+    updated_at: job.updatedAt,
+  };
+}
+
+export function mapJobRow(row: Row): QueueJob {
+  return {
+    id: row.id as string,
+    type: row.type as string,
+    payload: row.payload,
+    priority: row.priority as JobPriority,
+    status: row.status as JobStatus,
+    runAt: row.run_at as string,
+    attempts: row.attempts as number,
+    maxAttempts: row.max_attempts as number,
+    lastError: (row.last_error as string | null) ?? undefined,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+export function mapSchedulerLockRow(row: Row): SchedulerLock {
+  return {
+    lockKey: row.lock_key as string,
+    holderId: row.holder_id as string,
+    acquiredAt: row.acquired_at as string,
+    expiresAt: row.expires_at as string,
+  };
+}
+
+export function mapConversationLogRow(row: Row): ConversationLogEntry {
+  return {
+    id: row.id as string,
+    moduleId: row.module_id as AIModuleId,
+    runId: row.run_id as string,
+    systemPrompt: row.system_prompt as string,
+    userPrompt: row.user_prompt as string,
+    responseText: row.response_text as string,
+    createdAt: row.created_at as string,
+  };
 }
 
 export function mapAIReasoningLogRow(row: Row): AIReasoningLogEntry {

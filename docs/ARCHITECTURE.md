@@ -22,24 +22,38 @@ on top of this foundation.
 
 ```mermaid
 graph LR
-    Scheduler["packages/scheduler<br/>(cron + manual trigger)"] --> AIEngine["packages/ai-engine<br/>(10 AIEmployee implementations<br/>+ reasoning/ Reasoning Engine)"]
+    Scheduler["packages/scheduler<br/>(cron + manual trigger +<br/>distributed lock)"] --> AIEngine["packages/ai-engine<br/>(10 AIEmployee implementations<br/>+ reasoning/ Reasoning Engine)"]
     MCP["packages/mcp-server<br/>(read-only introspection)"] --> AIEngine
     MCP --> DB
+    Monitoring["packages/monitoring<br/>(snapshot + health check)"] --> AIEngine
+    Monitoring --> Queue
+    Monitoring --> Notif
     AIEngine --> Memory["packages/memory<br/>(KnowledgeBase, one per employee)"]
     AIEngine --> Security["packages/security<br/>(RBAC, approval gate)"]
-    AIEngine --> Notif["packages/notifications<br/>(Notification Coordinator)"]
+    AIEngine --> Notif["packages/notifications<br/>(Notification Coordinator +<br/>Notification Queue)"]
     AIEngine --> Connectors["packages/connectors<br/>(ports + mock adapters)"]
     AIEngine --> DB["packages/database<br/>(Repository: dummy or supabase)"]
     AIEngine --> AIProvider["packages/ai-provider<br/>(AIProvider abstraction: Gemini active,<br/>Claude/OpenAI/Ollama stubs)"]
     Notif --> AIProvider
+    Notif --> Queue["packages/queue<br/>(generic Job Queue + Retry Engine)"]
+    Queue --> DB
+    Scheduler --> DB
     Memory --> DB
     Notif --> DB
-    Security --> Shared["packages/shared<br/>(types, config, logger, timezone)"]
+    Security --> Shared["packages/shared<br/>(types, config, logger, timezone,<br/>retry-policy)"]
     DB --> Shared
     Connectors --> Shared
     AIEngine --> Shared
     AIProvider --> Shared
+    Queue --> Shared
 ```
+
+Sprint 3B ("AI Infrastructure, no external API" — see
+`docs/INFRASTRUCTURE.md`) added `packages/queue` (the generic Job Queue and
+Retry Engine backing the Notification Queue), `packages/monitoring`
+(read-only status snapshot + health check), and the Distributed Scheduler
+Lock inside `packages/scheduler`. None of it changes the employee model
+below — it's the durability/observability layer underneath it.
 
 Note the arrow direction between `notifications` and `ai-provider`: `notifications`
 depends on `ai-provider` directly (not on `ai-engine`), specifically to avoid a

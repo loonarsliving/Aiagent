@@ -4,13 +4,18 @@ import type {
   AIReport,
   ApprovalRequest,
   ApprovalStatus,
+  ConversationLogEntry,
+  JobStatus,
   NotificationMessage,
+  QueueJob,
   ScheduleEntry,
   ScheduleRunRecord,
+  SchedulerLock,
   TaskCadence,
   WorkLogEntry,
 } from "@mkh/shared";
 import type { Repository } from "../repository";
+import { PRIORITY_RANK } from "../priority-rank";
 import type {
   FinanceSnapshot,
   HRSnapshot,
@@ -39,6 +44,9 @@ export class InMemoryRepository implements Repository {
   private workLog: WorkLogEntry[] = [];
   private knowledgeItems = new Map<string, KnowledgeItem>();
   private aiReasoningLogs: AIReasoningLogEntry[] = [];
+  private jobs: QueueJob[] = [];
+  private locks = new Map<string, SchedulerLock>();
+  private conversationLogs: ConversationLogEntry[] = [];
   private readonly schedule: ScheduleEntry[] = DEFAULT_SCHEDULE;
   private readonly salesSnapshot: SalesSnapshot = seedSalesSnapshot();
   private readonly financeSnapshot: FinanceSnapshot = seedFinanceSnapshot();
@@ -166,6 +174,72 @@ export class InMemoryRepository implements Repository {
 
   async listAIReasoningLogs(filter: { moduleId?: AIModuleId; runId?: string }, limit = 100): Promise<AIReasoningLogEntry[]> {
     const filtered = this.aiReasoningLogs.filter(
+      (e) => (!filter.moduleId || e.moduleId === filter.moduleId) && (!filter.runId || e.runId === filter.runId),
+    );
+    return filtered.slice(0, limit);
+  }
+
+  async enqueueJob(job: QueueJob): Promise<QueueJob> {
+    this.jobs.unshift(job);
+    return job;
+  }
+
+  async getJob(id: string): Promise<QueueJob | null> {
+    return this.jobs.find((j) => j.id === id) ?? null;
+  }
+
+  async listJobs(filter: { status?: JobStatus; type?: string }, limit = 100): Promise<QueueJob[]> {
+    const filtered = this.jobs.filter(
+      (j) => (!filter.status || j.status === filter.status) && (!filter.type || j.type === filter.type),
+    );
+    return filtered.slice(0, limit);
+  }
+
+  async updateJob(id: string, patch: Partial<QueueJob>): Promise<QueueJob> {
+    const idx = this.jobs.findIndex((j) => j.id === id);
+    if (idx === -1) throw new Error(`QueueJob ${id} not found`);
+    const updated = { ...this.jobs[idx]!, ...patch };
+    this.jobs[idx] = updated;
+    return updated;
+  }
+
+  async claimNextPendingJob(type: string | undefined, now: string): Promise<QueueJob | null> {
+    const candidates = this.jobs
+      .filter((j) => j.status === "pending" && j.runAt <= now && (!type || j.type === type))
+      .sort((a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] || a.runAt.localeCompare(b.runAt));
+    const next = candidates[0];
+    if (!next) return null;
+    return this.updateJob(next.id, { status: "running", updatedAt: now });
+  }
+
+  async acquireLock(lockKey: string, holderId: string, expiresAt: string): Promise<boolean> {
+    const existing = this.locks.get(lockKey);
+    const now = new Date().toISOString();
+    if (existing && existing.expiresAt > now && existing.holderId !== holderId) {
+      return false;
+    }
+    this.locks.set(lockKey, { lockKey, holderId, acquiredAt: now, expiresAt });
+    return true;
+  }
+
+  async releaseLock(lockKey: string, holderId: string): Promise<void> {
+    const existing = this.locks.get(lockKey);
+    if (existing && existing.holderId === holderId) {
+      this.locks.delete(lockKey);
+    }
+  }
+
+  async getLock(lockKey: string): Promise<SchedulerLock | null> {
+    return this.locks.get(lockKey) ?? null;
+  }
+
+  async saveConversationLog(entry: ConversationLogEntry): Promise<ConversationLogEntry> {
+    this.conversationLogs.unshift(entry);
+    return entry;
+  }
+
+  async listConversationLogs(filter: { moduleId?: AIModuleId; runId?: string }, limit = 50): Promise<ConversationLogEntry[]> {
+    const filtered = this.conversationLogs.filter(
       (e) => (!filter.moduleId || e.moduleId === filter.moduleId) && (!filter.runId || e.runId === filter.runId),
     );
     return filtered.slice(0, limit);

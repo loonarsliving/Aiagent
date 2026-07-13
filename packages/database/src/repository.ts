@@ -4,9 +4,13 @@ import type {
   AIReport,
   ApprovalRequest,
   ApprovalStatus,
+  ConversationLogEntry,
+  JobStatus,
   NotificationMessage,
+  QueueJob,
   ScheduleEntry,
   ScheduleRunRecord,
+  SchedulerLock,
   TaskCadence,
   WorkLogEntry,
 } from "@mkh/shared";
@@ -70,4 +74,23 @@ export interface Repository {
   getFinanceSnapshot(): Promise<FinanceSnapshot>;
   getMarkomChecklistCompletionState(): Promise<MarkomChecklistCompletionState>;
   getHRSnapshot(): Promise<HRSnapshot>;
+
+  // Job Queue (Sprint 3B — generic, durable async work; backs the Notification Queue and any future job type)
+  enqueueJob(job: QueueJob): Promise<QueueJob>;
+  getJob(id: string): Promise<QueueJob | null>;
+  listJobs(filter: { status?: JobStatus; type?: string }, limit?: number): Promise<QueueJob[]>;
+  updateJob(id: string, patch: Partial<QueueJob>): Promise<QueueJob>;
+  /** Atomically claims (marks "running") the highest-priority, earliest-due pending job of the given type, or null if none is due. */
+  claimNextPendingJob(type: string | undefined, now: string): Promise<QueueJob | null>;
+
+  // Distributed Scheduler Lock (Sprint 3B — see packages/scheduler/src/distributed-lock.ts)
+  /** Returns true if the lock was acquired (either free, or held by an expired holder), false if genuinely held by someone else. */
+  acquireLock(lockKey: string, holderId: string, expiresAt: string): Promise<boolean>;
+  /** No-ops if `holderId` doesn't currently hold the lock (e.g. it already expired and was reclaimed). */
+  releaseLock(lockKey: string, holderId: string): Promise<void>;
+  getLock(lockKey: string): Promise<SchedulerLock | null>;
+
+  // Conversation log (Sprint 3B — the verbatim prompt/response exchange per reasoning call)
+  saveConversationLog(entry: ConversationLogEntry): Promise<ConversationLogEntry>;
+  listConversationLogs(filter: { moduleId?: AIModuleId; runId?: string }, limit?: number): Promise<ConversationLogEntry[]>;
 }

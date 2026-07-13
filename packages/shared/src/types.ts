@@ -144,7 +144,8 @@ export interface ScheduleRunRecord {
   scheduledTime: string;
   startedAt: string;
   finishedAt?: string;
-  status: "running" | "success" | "error";
+  /** "skipped" — Sprint 3B: another process already held the distributed scheduler lock for this moduleId+cadence slot, so this run never called the employee. */
+  status: "running" | "success" | "error" | "skipped";
   reportId?: string;
 }
 
@@ -342,4 +343,65 @@ export interface GovernanceProfile {
   dirOpsApprovalRules: string;
   /** What specifically requires a Branch Manager's sign-off for this worker. */
   branchManagerApprovalRules: string;
+}
+
+// ─── Sprint 3B — AI Infrastructure (no external API) ───────────────────
+
+export type JobStatus = "pending" | "running" | "success" | "failed" | "dead";
+
+export type JobPriority = "low" | "normal" | "high" | "urgent";
+
+/**
+ * A generic, durable, retryable unit of async work — the one queue
+ * abstraction backing everything that needs "run this later, retry it if
+ * it fails, give up cleanly if it keeps failing": the Notification Queue
+ * (`type: "notification-dispatch"`) today, any future async job type
+ * without a new table. Persisted through `Repository` so it survives a
+ * process restart under `DATA_MODE=supabase` — an in-memory-only queue
+ * cannot claim "recovery after crash."
+ */
+export interface QueueJob<TPayload = unknown> {
+  id: string;
+  type: string;
+  payload: TPayload;
+  priority: JobPriority;
+  status: JobStatus;
+  /** ISO timestamp — a job is only claimable once `runAt` has passed; this is what makes a job "delayed" or a scheduled retry. */
+  runAt: string;
+  attempts: number;
+  maxAttempts: number;
+  lastError?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * A lease-based distributed lock — `expiresAt` is what gives "recovery
+ * after crash": a holder that dies without releasing its lock is
+ * automatically supersedable once `expiresAt` passes, rather than
+ * deadlocking the slot forever. See packages/scheduler/src/distributed-lock.ts.
+ */
+export interface SchedulerLock {
+  lockKey: string;
+  holderId: string;
+  acquiredAt: string;
+  expiresAt: string;
+}
+
+/**
+ * The actual prompt/response exchange for one reasoning call — distinct
+ * from `AIReasoningLogEntry` (which is metadata: tokens, timing, status).
+ * Kept as a separate persisted record so debugging/auditing a specific
+ * AI decision doesn't require replaying the Retrieval Layer against
+ * possibly-since-changed knowledge/memory — the exact text sent and
+ * received is captured verbatim.
+ */
+export interface ConversationLogEntry {
+  id: string;
+  moduleId: AIModuleId;
+  runId: string;
+  systemPrompt: string;
+  userPrompt: string;
+  responseText: string;
+  createdAt: string;
 }

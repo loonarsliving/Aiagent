@@ -160,11 +160,41 @@ importers:
         specifier: workspace:*
         version: link:../shared
 
+  packages/monitoring:
+    dependencies:
+      '@mkh/ai-engine':
+        specifier: workspace:*
+        version: link:../ai-engine
+      '@mkh/database':
+        specifier: workspace:*
+        version: link:../database
+      '@mkh/notifications':
+        specifier: workspace:*
+        version: link:../notifications
+      '@mkh/queue':
+        specifier: workspace:*
+        version: link:../queue
+      '@mkh/shared':
+        specifier: workspace:*
+        version: link:../shared
+
   packages/notifications:
     dependencies:
       '@mkh/ai-provider':
         specifier: workspace:*
         version: link:../ai-provider
+      '@mkh/database':
+        specifier: workspace:*
+        version: link:../database
+      '@mkh/queue':
+        specifier: workspace:*
+        version: link:../queue
+      '@mkh/shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/queue:
+    dependencies:
       '@mkh/database':
         specifier: workspace:*
         version: link:../database

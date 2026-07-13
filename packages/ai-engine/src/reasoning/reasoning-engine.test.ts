@@ -161,6 +161,18 @@ describe("runReasoning — success path", () => {
     expect(memoryItems[0]?.title).toBe("Ringkasan reasoning.");
   });
 
+  it("persists a ConversationLogEntry with the verbatim system/user prompt and provider response text", async () => {
+    const { logger } = fakeLogger("run_conv_1");
+    await runReasoning({ moduleId: "finance-analyst", observation: "obs" }, logger, successProvider());
+
+    const logs = await getRepository().listConversationLogs({ runId: "run_conv_1" });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]?.moduleId).toBe("finance-analyst");
+    expect(logs[0]?.systemPrompt.length).toBeGreaterThan(0);
+    expect(logs[0]?.userPrompt).toContain("obs");
+    expect(logs[0]?.responseText).toBe(validResponseText());
+  });
+
   it("never leaks another employee's knowledge/memory into the prompt (scoped retrieval)", async () => {
     const repo = getRepository();
     await repo.upsertKnowledgeItem({
@@ -218,6 +230,32 @@ describe("runReasoning — error handling", () => {
 
     const memoryItems = await getRepository().listKnowledgeItems({ moduleId: "finance-analyst", category: AI_REASONING_HISTORY_CATEGORY });
     expect(memoryItems).toHaveLength(0);
+  });
+
+  it("does not persist a ConversationLogEntry when the provider never returned any text (total connection failure)", async () => {
+    const { logger } = fakeLogger("run_conv_2");
+    await runReasoning({ moduleId: "finance-analyst", observation: "obs" }, logger, alwaysFailsProvider());
+
+    const logs = await getRepository().listConversationLogs({ runId: "run_conv_2" });
+    expect(logs).toHaveLength(0);
+  });
+
+  it("still persists a ConversationLogEntry when the provider responded but the text failed Output Engine validation", async () => {
+    const malformedProvider: AIProvider = {
+      name: "gemini",
+      async generate() {
+        return { text: "not json at all", provider: "gemini", model: "gemini-2.0-flash", responseTimeMs: 5 };
+      },
+      async healthCheck() {
+        return { ok: true, detail: "ok" };
+      },
+    };
+    const { logger } = fakeLogger("run_conv_3");
+    await runReasoning({ moduleId: "finance-analyst", observation: "obs" }, logger, malformedProvider);
+
+    const logs = await getRepository().listConversationLogs({ runId: "run_conv_3" });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]?.responseText).toBe("not json at all");
   });
 
   it("returns a structured failure (not a throw) when the provider returns text that fails Output Engine validation", async () => {

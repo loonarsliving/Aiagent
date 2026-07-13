@@ -1,5 +1,5 @@
 {
-  "name": "@mkh/notifications",
+  "name": "@mkh/queue",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,8 +10,6 @@
   },
   "dependencies": {
     "@mkh/shared": "workspace:*",
-    "@mkh/database": "workspace:*",
-    "@mkh/ai-provider": "workspace:*",
-    "@mkh/queue": "workspace:*"
+    "@mkh/database": "workspace:*"
   }
 }
