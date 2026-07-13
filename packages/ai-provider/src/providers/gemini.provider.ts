@@ -20,6 +20,10 @@ export interface GeminiClientLike {
         maxOutputTokens?: number;
         systemInstruction?: string;
         responseMimeType?: string;
+        // Disables the model's internal "thinking" pass, which otherwise
+        // consumes an unpredictable share of maxOutputTokens before any
+        // visible text is emitted (observed on gemini-flash-latest).
+        thinkingConfig?: { thinkingBudget?: number };
       };
     }): Promise<{
       text?: string;
@@ -70,6 +74,7 @@ export class GeminiProvider implements AIProvider {
             maxOutputTokens: request.maxOutputTokens ?? this.options.defaultMaxOutputTokens,
             systemInstruction: request.systemPrompt,
             responseMimeType: request.responseFormat === "json" ? "application/json" : undefined,
+            thinkingConfig: { thinkingBudget: 0 },
           },
         }),
         timeoutPromise,
@@ -113,7 +118,10 @@ export class GeminiProvider implements AIProvider {
       const res = await this.generate({
         systemPrompt: "You are a health check probe. Reply with exactly one word.",
         userPrompt: "Reply with exactly: OK",
-        maxOutputTokens: 10,
+        // Newer "thinking" models (e.g. gemini-flash-latest) spend part of
+        // the output token budget on internal reasoning before emitting
+        // visible text — 10 tokens left no room for the answer itself.
+        maxOutputTokens: 64,
         temperature: 0,
       });
       const ok = res.text.trim().length > 0;
