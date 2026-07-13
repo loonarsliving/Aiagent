@@ -33,6 +33,20 @@ const envSchema = z.object({
     .default("BLOCK_MEDIUM_AND_ABOVE"),
   /** Max knowledge/memory items the Retrieval Layer includes in a single reasoning prompt — token optimization, never "send the whole knowledge base." */
   AI_RETRIEVAL_TOP_K: z.coerce.number().int().min(1).max(50).default(8),
+  /**
+   * Escape hatch for the Notification Coordinator's optional Gemini
+   * wording-refinement call inside notify() — every notify() call attempts
+   * one Gemini call when true. Set to the literal string "false" to stay
+   * within a tight API quota; falls back to original wording either way.
+   * Deliberately NOT z.coerce.boolean() — that coerces via JS's Boolean(),
+   * under which Boolean("false") is true (any non-empty string is
+   * truthy), silently defeating the "set false to disable" instruction.
+   */
+  NOTIFY_AI_REFINEMENT_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v !== "false")
+    .pipe(z.boolean()),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
@@ -65,6 +79,7 @@ export function getConfig(): AppConfig {
       AI_TIMEOUT_MS: process.env.AI_TIMEOUT_MS,
       AI_SAFETY_THRESHOLD: process.env.AI_SAFETY_THRESHOLD,
       AI_RETRIEVAL_TOP_K: process.env.AI_RETRIEVAL_TOP_K,
+      NOTIFY_AI_REFINEMENT_ENABLED: process.env.NOTIFY_AI_REFINEMENT_ENABLED,
     });
   }
   return cached;

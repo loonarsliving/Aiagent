@@ -20,6 +20,7 @@ function provider(client: GeminiClientLike, timeoutMs = 5000) {
     defaultTemperature: 0.3,
     defaultMaxOutputTokens: 1024,
     timeoutMs,
+    safetyThreshold: "BLOCK_MEDIUM_AND_ABOVE",
   });
 }
 
@@ -45,6 +46,28 @@ describe("GeminiProvider.generate", () => {
     };
     await provider(client).generate({ systemPrompt: "You are a test.", userPrompt: "hi", temperature: 0.9, maxOutputTokens: 50 });
     expect(capturedConfig).toMatchObject({ temperature: 0.9, maxOutputTokens: 50, systemInstruction: "You are a test." });
+  });
+
+  it("applies the configured safety threshold to every harm category", async () => {
+    let capturedConfig: unknown;
+    const client: GeminiClientLike = {
+      models: {
+        generateContent: async (params) => {
+          capturedConfig = params.config;
+          return { text: "ok" };
+        },
+      },
+    };
+    await provider(client).generate({ systemPrompt: "sys", userPrompt: "hi" });
+    const safetySettings = (capturedConfig as { safetySettings: { category: string; threshold: string }[] }).safetySettings;
+    expect(safetySettings).toHaveLength(4);
+    expect(safetySettings.every((s) => s.threshold === "BLOCK_MEDIUM_AND_ABOVE")).toBe(true);
+    expect(safetySettings.map((s) => s.category)).toEqual([
+      "HARM_CATEGORY_HARASSMENT",
+      "HARM_CATEGORY_HATE_SPEECH",
+      "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+      "HARM_CATEGORY_DANGEROUS_CONTENT",
+    ]);
   });
 
   it("requests JSON mime type when responseFormat is json", async () => {

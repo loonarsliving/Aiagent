@@ -1,5 +1,5 @@
 import { createLogger } from "@mkh/shared";
-import { getAIProvider } from "@mkh/ai-provider";
+import { getAIProvider, type AIProvider } from "@mkh/ai-provider";
 
 const logger = createLogger("notifications:ai-refinement");
 
@@ -47,9 +47,13 @@ function stripCodeFence(text: string): string {
  * back silently to the original title/body so notification delivery is
  * never dependent on Gemini being configured or reachable.
  */
-export async function refineNotificationWording(input: RefinableNotification): Promise<RefinedWording> {
+export async function refineNotificationWording(
+  input: RefinableNotification,
+  /** Test-only injection point — production callers omit this and get getAIProvider()'s config-resolved provider. */
+  providerOverride?: AIProvider,
+): Promise<RefinedWording> {
   try {
-    const provider = getAIProvider();
+    const provider = providerOverride ?? getAIProvider();
     const response = await provider.generate({
       systemPrompt: SYSTEM_PROMPT,
       userPrompt: `Judul asli: ${input.title}\nIsi asli: ${input.body}\nSeverity: ${input.severity}\nTarget: ${input.target ?? "-"}`,

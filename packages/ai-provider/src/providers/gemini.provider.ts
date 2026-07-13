@@ -41,7 +41,16 @@ export interface GeminiProviderOptions {
   defaultTemperature: number;
   defaultMaxOutputTokens: number;
   timeoutMs: number;
+  /** Applied to every harm category — see AI_SAFETY_THRESHOLD in @mkh/shared's config layer. */
+  safetyThreshold: string;
 }
+
+const HARM_CATEGORIES = [
+  "HARM_CATEGORY_HARASSMENT",
+  "HARM_CATEGORY_HATE_SPEECH",
+  "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+  "HARM_CATEGORY_DANGEROUS_CONTENT",
+] as const;
 
 /** Real Gemini Flash implementation — the only "active" provider in Sprint 2. */
 export class GeminiProvider implements AIProvider {
@@ -64,18 +73,30 @@ export class GeminiProvider implements AIProvider {
       );
     });
 
+    const config: NonNullable<Parameters<GeminiClientLike["models"]["generateContent"]>[0]["config"]> = {
+      temperature: request.temperature ?? this.options.defaultTemperature,
+      maxOutputTokens: request.maxOutputTokens ?? this.options.defaultMaxOutputTokens,
+      systemInstruction: request.systemPrompt,
+      responseMimeType: request.responseFormat === "json" ? "application/json" : undefined,
+      thinkingConfig: { thinkingBudget: 0 },
+    };
+    // safetySettings isn't declared on GeminiClientLike (its category/
+    // threshold enum types don't structurally match plain strings, and
+    // TS string enums reject literal assignment) — injected here via type
+    // erasure; the REST API accepts these exact string values regardless
+    // of how the SDK's own TS types model them (verified against the SDK's
+    // HarmCategory/HarmBlockThreshold enum member values directly).
+    (config as Record<string, unknown>).safetySettings = HARM_CATEGORIES.map((category) => ({
+      category,
+      threshold: this.options.safetyThreshold,
+    }));
+
     try {
       const response = await Promise.race([
         this.client.models.generateContent({
           model: this.options.model,
           contents: request.userPrompt,
-          config: {
-            temperature: request.temperature ?? this.options.defaultTemperature,
-            maxOutputTokens: request.maxOutputTokens ?? this.options.defaultMaxOutputTokens,
-            systemInstruction: request.systemPrompt,
-            responseMimeType: request.responseFormat === "json" ? "application/json" : undefined,
-            thinkingConfig: { thinkingBudget: 0 },
-          },
+          config,
         }),
         timeoutPromise,
       ]);

@@ -76,6 +76,12 @@ the real API. Concretely:
   (`maxOutputTokens: 64` — enough headroom even with thinking left enabled
   on models that ignore the override) and reports `ok: true` only if the
   response text is non-empty.
+- Every call sets `safetySettings` for all four harm categories
+  (harassment, hate speech, sexually explicit, dangerous content) to
+  `AI_SAFETY_THRESHOLD`. Found and fixed during the Production Readiness
+  Audit: the config value was defined, validated, and documented but never
+  actually read by `GeminiProvider` — a real "declared but not enforced"
+  gap. See `docs/audits/PRODUCTION_READINESS.md`.
 
 ## Configuration — zero hardcoding
 

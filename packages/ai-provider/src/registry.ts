@@ -32,6 +32,7 @@ function createGeminiProvider(): GeminiProvider {
     defaultTemperature: config.AI_TEMPERATURE,
     defaultMaxOutputTokens: config.AI_MAX_OUTPUT_TOKENS,
     timeoutMs: config.AI_TIMEOUT_MS,
+    safetyThreshold: config.AI_SAFETY_THRESHOLD,
   });
   return cachedGeminiProvider;
 }

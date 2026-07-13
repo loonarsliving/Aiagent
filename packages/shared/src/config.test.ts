@@ -20,6 +20,7 @@ const ENV_KEYS = [
   "AI_TIMEOUT_MS",
   "AI_SAFETY_THRESHOLD",
   "AI_RETRIEVAL_TOP_K",
+  "NOTIFY_AI_REFINEMENT_ENABLED",
 ] as const;
 
 let snapshot: Record<string, string | undefined>;
@@ -109,6 +110,7 @@ describe("getConfig", () => {
     expect(config.AI_TIMEOUT_MS).toBe(15_000);
     expect(config.AI_SAFETY_THRESHOLD).toBe("BLOCK_MEDIUM_AND_ABOVE");
     expect(config.AI_RETRIEVAL_TOP_K).toBe(8);
+    expect(config.NOTIFY_AI_REFINEMENT_ENABLED).toBe(true);
   });
 
   it("rejects an unknown AI_PROVIDER instead of silently accepting it", () => {
@@ -131,5 +133,21 @@ describe("getConfig", () => {
     process.env.GEMINI_API_KEY = "test-key-not-real";
     resetConfigCache();
     expect(getConfig().GEMINI_API_KEY).toBe("test-key-not-real");
+  });
+
+  it('parses NOTIFY_AI_REFINEMENT_ENABLED="false" as false — regression guard against z.coerce.boolean()\'s Boolean("false") === true trap', () => {
+    process.env.NOTIFY_AI_REFINEMENT_ENABLED = "false";
+    resetConfigCache();
+    expect(getConfig().NOTIFY_AI_REFINEMENT_ENABLED).toBe(false);
+  });
+
+  it('treats any value other than the literal string "false" as enabled', () => {
+    process.env.NOTIFY_AI_REFINEMENT_ENABLED = "true";
+    resetConfigCache();
+    expect(getConfig().NOTIFY_AI_REFINEMENT_ENABLED).toBe(true);
+
+    process.env.NOTIFY_AI_REFINEMENT_ENABLED = "1";
+    resetConfigCache();
+    expect(getConfig().NOTIFY_AI_REFINEMENT_ENABLED).toBe(true);
   });
 });

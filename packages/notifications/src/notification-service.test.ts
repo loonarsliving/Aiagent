@@ -1,14 +1,17 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetConfigCache } from "@mkh/shared";
 import { getRepository, resetRepositoryCache } from "@mkh/database";
+import * as aiRefinement from "./ai-refinement";
 import { notify } from "./notification-service";
 
 afterEach(() => {
   delete process.env.NOTIFY_CHANNEL_DEFAULT;
   delete process.env.WHATSAPP_BUSINESS_TOKEN;
   delete process.env.WHATSAPP_BUSINESS_PHONE_ID;
+  delete process.env.NOTIFY_AI_REFINEMENT_ENABLED;
   resetConfigCache();
   resetRepositoryCache();
+  vi.restoreAllMocks();
 });
 
 describe("notify", () => {
@@ -50,5 +53,27 @@ describe("notify", () => {
     const message = await notify({ title: "Undelivered", body: "B", channel: "telegram" });
     const persisted = await getRepository().listNotifications(5);
     expect(persisted.some((n) => n.id === message.id && n.title === "Undelivered")).toBe(true);
+  });
+
+  it("skips the AI wording-refinement call entirely when NOTIFY_AI_REFINEMENT_ENABLED=false", async () => {
+    resetRepositoryCache();
+    process.env.NOTIFY_AI_REFINEMENT_ENABLED = "false";
+    resetConfigCache();
+    const spy = vi.spyOn(aiRefinement, "refineNotificationWording");
+
+    const message = await notify({ title: "Original Title", body: "Original Body" });
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(message.title).toBe("Original Title");
+    expect(message.body).toBe("Original Body");
+  });
+
+  it("attempts the AI wording-refinement call when NOTIFY_AI_REFINEMENT_ENABLED is unset (defaults to true)", async () => {
+    resetRepositoryCache();
+    const spy = vi.spyOn(aiRefinement, "refineNotificationWording");
+
+    await notify({ title: "T", body: "B" });
+
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });

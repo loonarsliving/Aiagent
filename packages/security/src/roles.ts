@@ -1,6 +1,7 @@
 export const ROLES = [
   "owner",
   "dir_ops",
+  "branch_manager", // approval authority for Level 2 actions in the AI Governance Approval Matrix — see governance.ts
   "markom",
   "sales",
   "finance",

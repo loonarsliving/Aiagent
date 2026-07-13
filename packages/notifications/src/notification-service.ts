@@ -44,12 +44,14 @@ export async function notify(input: NotifyInput): Promise<NotificationMessage> {
   const channelType = input.channel ?? config.NOTIFY_CHANNEL_DEFAULT;
   const severity = input.severity ?? "info";
 
-  const wording = await refineNotificationWording({
-    title: input.title,
-    body: input.body,
-    severity,
-    target: input.target,
-  });
+  const wording = config.NOTIFY_AI_REFINEMENT_ENABLED
+    ? await refineNotificationWording({
+        title: input.title,
+        body: input.body,
+        severity,
+        target: input.target,
+      })
+    : { title: input.title, body: input.body, refined: false as const };
 
   const message: NotificationMessage = {
     id: generateId("ntf"),

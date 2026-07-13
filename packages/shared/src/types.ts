@@ -260,3 +260,51 @@ export interface AIReasoningLogEntry {
   errorReason?: string;
   createdAt: string;
 }
+
+/**
+ * The Approval Matrix — every action any AI Worker can take is classified
+ * into exactly one of these five levels. Enforced by
+ * `@mkh/security`'s governance layer (see `docs/AI_GOVERNANCE.md`):
+ *
+ * - 0 — Read Only. Observing data, no output that could influence a decision.
+ * - 1 — Suggestion Only. A recommendation, notification, or report — never
+ *   executes anything and never requires a human decision before it happens.
+ * - 2 — Requires Branch Manager approval.
+ * - 3 — Requires Director Operations approval.
+ * - 4 — Requires Owner approval.
+ *
+ * No AI Worker may execute an action above its own `permissionLevel`.
+ */
+export type ApprovalLevel = 0 | 1 | 2 | 3 | 4;
+
+/**
+ * One governance profile per AI Worker (the 10 `AIEmployee`s plus the
+ * Notification Coordinator, mirroring `PromptDefinition["moduleId"]`).
+ * This is declarative data, not enforcement by itself — enforcement is
+ * `@mkh/security`'s `isActionWithinPermission`/`requiresHumanApproval`
+ * helpers, which any future caller (a real execute() path, MK Connect)
+ * must check before acting.
+ */
+export interface GovernanceProfile {
+  moduleId: AIModuleId | "notification-coordinator";
+  /** The highest ApprovalLevel this worker may ever reach — a hard ceiling. */
+  permissionLevel: ApprovalLevel;
+  /** At or below this level, the worker may act with zero human approval. */
+  autoActionLevel: ApprovalLevel;
+  /**
+   * The level at which this worker's actions require a human decision
+   * before they take effect. `null` means nothing this worker does today
+   * reaches an approval-gated action (its ceiling is a Level 1 suggestion).
+   */
+  requiresApprovalLevel: ApprovalLevel | null;
+  /** Actions this worker must never perform, under any circumstance. */
+  forbiddenActions: string[];
+  /** When and how this worker escalates instead of acting on its own. */
+  escalationRules: string;
+  /** What specifically requires the Owner's sign-off for this worker. */
+  ownerApprovalRules: string;
+  /** What specifically requires Director Operations' sign-off for this worker. */
+  dirOpsApprovalRules: string;
+  /** What specifically requires a Branch Manager's sign-off for this worker. */
+  branchManagerApprovalRules: string;
+}
