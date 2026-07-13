@@ -31,3 +31,27 @@ export interface PromptDefinition {
   memoryRule: string;
   knowledgeRule: string;
 }
+
+/** One measurable success metric for an AI Worker, with what "good" looks like — not a live-computed number, a declared target for humans reviewing this worker's output over time. */
+export interface EmployeeKPI {
+  metric: string;
+  target: string;
+}
+
+/**
+ * Sprint 3A: the business-facing identity layer every AI Worker needs on
+ * top of its PromptDefinition (which is Gemini-facing) and GovernanceProfile
+ * (which is authority-facing). Mission/Scope/KPI are genuinely new fields —
+ * Role already exists on AIEmployee, Decision/Escalation Rules already
+ * exist on PromptDefinition, Approval Rules already exist on
+ * GovernanceProfile; this type deliberately does not duplicate any of
+ * those to avoid two sources of truth drifting apart.
+ */
+export interface EmployeeProfile {
+  moduleId: AIModuleId | "notification-coordinator";
+  /** One sentence: why this worker exists. */
+  mission: string;
+  /** What this worker does and, explicitly, does not do. */
+  scope: string;
+  kpis: EmployeeKPI[];
+}

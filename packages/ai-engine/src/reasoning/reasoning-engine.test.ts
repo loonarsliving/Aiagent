@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getRepository, resetRepositoryCache } from "@mkh/database";
-import { resetConfigCache } from "@mkh/shared";
+import { resetConfigCache, type GovernanceProfile, type ReasoningOutput } from "@mkh/shared";
 import type { AIGenerateRequest, AIGenerateResponse, AIProvider } from "@mkh/ai-provider";
 import type { WorkLogger } from "../core/work-logger";
-import { runReasoning } from "./reasoning-engine";
+import { determineApprovalLevel, runReasoning } from "./reasoning-engine";
 import { AI_REASONING_HISTORY_CATEGORY } from "./retrieval";
 
 function fakeLogger(runId = "run_test"): { logger: WorkLogger; steps: { step: string; detail?: string; status?: string }[] } {
@@ -98,7 +98,7 @@ afterEach(() => {
 });
 
 describe("runReasoning — success path", () => {
-  it("runs Observe -> Collect Context -> Retrieve Knowledge -> Retrieve Memory -> Reason -> Audit Log -> Save Memory, in order", async () => {
+  it("runs Observe -> Collect Context -> Retrieve Memory -> Retrieve Knowledge -> Reason -> Determine Approval Level -> Generate Notification -> Audit Log -> Save Memory, in order", async () => {
     const { logger, steps } = fakeLogger("run_1");
     const result = await runReasoning(
       { moduleId: "finance-analyst", observation: "Net cashflow positif hari ini." },
@@ -111,14 +111,25 @@ describe("runReasoning — success path", () => {
       expect(result.priority).toBe("medium");
       expect(result.confidenceScore).toBe(0.75);
       expect(result.escalation).toBeNull();
+      expect(result.approvalLevel).toBe(1);
+      expect(result.notification).toMatchObject({
+        recipient: "owner",
+        priority: "medium",
+        title: "Ringkasan reasoning.",
+        message: "Lakukan sesuatu.",
+        channel: "dummy",
+        sourceModuleId: "finance-analyst",
+      });
     }
 
     const stepNames = steps.map((s) => s.step);
     expect(stepNames).toEqual([
       "reasoning_observe",
       "reasoning_collect_context",
-      "reasoning_retrieve_knowledge",
       "reasoning_retrieve_memory",
+      "reasoning_retrieve_knowledge",
+      "reasoning_determine_approval_level",
+      "reasoning_generate_notification",
       "reasoning_audit_log",
       "reasoning_save_memory",
     ]);
@@ -222,5 +233,56 @@ describe("runReasoning — error handling", () => {
     const { logger } = fakeLogger("run_9");
     const result = await runReasoning({ moduleId: "finance-analyst", observation: "obs" }, logger, malformedProvider);
     expect(result.failed).toBe(true);
+  });
+});
+
+function profile(overrides: Partial<GovernanceProfile> = {}): GovernanceProfile {
+  return {
+    moduleId: "finance-analyst",
+    permissionLevel: 1,
+    autoActionLevel: 1,
+    requiresApprovalLevel: null,
+    forbiddenActions: [],
+    escalationRules: "",
+    ownerApprovalRules: "",
+    dirOpsApprovalRules: "",
+    branchManagerApprovalRules: "",
+    ...overrides,
+  };
+}
+
+function output(overrides: Partial<ReasoningOutput> = {}): ReasoningOutput {
+  return {
+    priority: "medium",
+    summary: "s",
+    recommendation: "r",
+    reason: "x",
+    confidenceScore: 0.5,
+    needApproval: false,
+    escalation: null,
+    nextAction: "n",
+    ...overrides,
+  };
+}
+
+describe("determineApprovalLevel", () => {
+  it("returns autoActionLevel when the model does not flag needApproval", () => {
+    expect(determineApprovalLevel(profile({ autoActionLevel: 1 }), output({ needApproval: false }))).toBe(1);
+  });
+
+  it("returns requiresApprovalLevel when the model flags needApproval and the worker has one declared", () => {
+    expect(
+      determineApprovalLevel(profile({ permissionLevel: 4, requiresApprovalLevel: 4 }), output({ needApproval: true })),
+    ).toBe(4);
+  });
+
+  it("falls back to permissionLevel when needApproval is true but the worker has no requiresApprovalLevel declared", () => {
+    expect(determineApprovalLevel(profile({ permissionLevel: 1, requiresApprovalLevel: null }), output({ needApproval: true }))).toBe(1);
+  });
+
+  it("hard-clamps the result to permissionLevel even if requiresApprovalLevel is somehow higher — no worker exceeds its own ceiling", () => {
+    expect(
+      determineApprovalLevel(profile({ permissionLevel: 1, requiresApprovalLevel: 4 }), output({ needApproval: true })),
+    ).toBe(1);
   });
 });

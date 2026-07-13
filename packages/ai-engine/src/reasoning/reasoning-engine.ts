@@ -1,12 +1,24 @@
-import { generateId, getConfig, type AIModuleId, type AIReasoningLogEntry, type AIProviderName, type ReasoningResult } from "@mkh/shared";
+import {
+  generateId,
+  getConfig,
+  type AIModuleId,
+  type AIReasoningLogEntry,
+  type AIProviderName,
+  type ApprovalLevel,
+  type GovernanceProfile,
+  type ReasoningOutput,
+  type ReasoningResult,
+} from "@mkh/shared";
 import { getRepository } from "@mkh/database";
 import { KnowledgeBase } from "@mkh/memory";
+import { getGovernanceProfile } from "@mkh/security";
 import { AIProviderError, getAIProvider, type AIProvider } from "@mkh/ai-provider";
 import type { WorkLogger } from "../core/work-logger";
 import { buildSystemPrompt, buildUserPrompt } from "./prompt-engine";
 import { getPromptDefinition } from "./prompt-engine";
 import { AI_REASONING_HISTORY_CATEGORY, retrieveKnowledge, retrieveMemory } from "./retrieval";
 import { parseReasoningOutput } from "./output-schema";
+import { buildNotificationObject } from "./notification-object";
 
 export interface ReasoningInput {
   moduleId: AIModuleId;
@@ -23,11 +35,26 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Governance is enforced here, deterministically — never by trusting the
+ * model's own `needApproval` self-report at face value. If the model says
+ * approval is needed, the level is the worker's declared
+ * `requiresApprovalLevel` (or, if that worker has none declared, its
+ * `permissionLevel` ceiling); otherwise it's the worker's `autoActionLevel`.
+ * Either way the result is hard-clamped to `permissionLevel` — "No AI
+ * Worker may execute actions above its permission level" holds by
+ * construction, not by convention. See docs/AI_GOVERNANCE.md.
+ */
+export function determineApprovalLevel(profile: GovernanceProfile, output: ReasoningOutput): ApprovalLevel {
+  const rawLevel = output.needApproval ? (profile.requiresApprovalLevel ?? profile.permissionLevel) : profile.autoActionLevel;
+  return Math.min(rawLevel, profile.permissionLevel) as ApprovalLevel;
+}
+
+/**
  * The Reasoning Engine — every Digital Employee's "kemampuan berpikir"
  * runs through this one function, in this fixed order: Observe -> Collect
- * Context -> Retrieve Knowledge -> Retrieve Memory -> Reason -> Decision/
- * Recommendation/Confidence/NeedApproval (the Output Engine's parsed
- * result) -> Audit Log -> save to own memory.
+ * Context -> Retrieve Memory -> Retrieve Knowledge -> Reason -> Generate
+ * Recommendation (the Output Engine's parsed result) -> Determine Approval
+ * Level -> Generate Notification -> Audit -> Save Memory.
  *
  * Error handling matches the brief exactly: retry (bounded,
  * AI_RETRY_ATTEMPTS/AI_RETRY_BACKOFF_MS) -> on exhaustion, write the audit
@@ -53,13 +80,13 @@ export async function runReasoning(
   // 2. Collect Context
   await log.step("reasoning_collect_context", "Mengumpulkan konteks & data terkait");
 
-  // 3. Retrieve Knowledge (top-K only — never the whole knowledge base)
-  const knowledge = await retrieveKnowledge(repo, { moduleId: input.moduleId, query: input.knowledgeQuery ?? input.observation });
-  await log.step("reasoning_retrieve_knowledge", `${knowledge.length} item knowledge relevan diambil`);
-
-  // 4. Retrieve Memory (this employee's own past reasoning outputs only)
+  // 3. Retrieve Memory (this employee's own past reasoning outputs only)
   const memory = await retrieveMemory(repo, input.moduleId);
   await log.step("reasoning_retrieve_memory", `${memory.length} item memory (riwayat reasoning sendiri) diambil`);
+
+  // 4. Retrieve Knowledge (top-K only — never the whole knowledge base)
+  const knowledge = await retrieveKnowledge(repo, { moduleId: input.moduleId, query: input.knowledgeQuery ?? input.observation });
+  await log.step("reasoning_retrieve_knowledge", `${knowledge.length} item knowledge relevan diambil`);
 
   const systemPrompt = buildSystemPrompt(promptDefinition);
   const userPrompt = buildUserPrompt({ observation: input.observation, contextData: input.contextData, knowledge, memory });
@@ -109,6 +136,19 @@ export async function runReasoning(
     }
   }
 
+  // 8-9. Determine Approval Level -> Generate Notification (only meaningful on success).
+  let governedOutput: (ReasoningOutput & { approvalLevel: ApprovalLevel; notification: ReturnType<typeof buildNotificationObject> }) | undefined;
+  if (success && parsedOutput) {
+    const governanceProfile = getGovernanceProfile(input.moduleId);
+    const approvalLevel = determineApprovalLevel(governanceProfile, parsedOutput);
+    await log.step("reasoning_determine_approval_level", `Approval level: ${approvalLevel} (${input.moduleId} ceiling: ${governanceProfile.permissionLevel})`);
+
+    const notification = buildNotificationObject(input.moduleId, parsedOutput, approvalLevel);
+    await log.step("reasoning_generate_notification", `Notification object dibuat untuk ${notification.recipient} (priority: ${notification.priority})`);
+
+    governedOutput = { ...parsedOutput, approvalLevel, notification };
+  }
+
   // 10. Audit Log — one row per reasoning attempt sequence, success or failure either way.
   const auditEntry: AIReasoningLogEntry = {
     id: generateId("ail"),
@@ -127,7 +167,7 @@ export async function runReasoning(
   };
   await repo.saveAIReasoningLog(auditEntry);
 
-  if (!success || !parsedOutput) {
+  if (!success || !parsedOutput || !governedOutput) {
     await log.step("reasoning_audit_log", `Audit log disimpan (status=error): ${lastErrorReason}`, "error");
     return { failed: true, reason: lastErrorReason };
   }
@@ -152,5 +192,5 @@ export async function runReasoning(
   ]);
   await log.step("reasoning_save_memory", "Hasil reasoning disimpan ke memory sendiri");
 
-  return { ...parsedOutput, failed: false };
+  return { ...governedOutput, failed: false };
 }

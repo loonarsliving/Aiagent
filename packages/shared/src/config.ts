@@ -47,6 +47,18 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v !== "false")
     .pipe(z.boolean()),
+
+  // --- Company profile (Sprint 3A — no hardcoded business values) --------
+  /** Grounding fact every Reasoning Engine prompt includes — never hardcoded, see company-context.ts. */
+  COMPANY_NAME: z.string().default("PT Maha Karya Haluoleo"),
+  COMPANY_INDUSTRY: z
+    .string()
+    .default(
+      "Pengembang properti & villa (real estate developer) di Sulawesi Tenggara/Selatan — unit bisnis penjualan perumahan, villa, dan marketing digital",
+    ),
+  /** Every "what day is it" decision (scheduler cron, freshness checks) must agree on this, not the server's local timezone. */
+  COMPANY_TIMEZONE: z.string().default("Asia/Makassar"),
+  COMPANY_OWNER_TITLE: z.string().default("Owner"),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
@@ -80,6 +92,10 @@ export function getConfig(): AppConfig {
       AI_SAFETY_THRESHOLD: process.env.AI_SAFETY_THRESHOLD,
       AI_RETRIEVAL_TOP_K: process.env.AI_RETRIEVAL_TOP_K,
       NOTIFY_AI_REFINEMENT_ENABLED: process.env.NOTIFY_AI_REFINEMENT_ENABLED,
+      COMPANY_NAME: process.env.COMPANY_NAME,
+      COMPANY_INDUSTRY: process.env.COMPANY_INDUSTRY,
+      COMPANY_TIMEZONE: process.env.COMPANY_TIMEZONE,
+      COMPANY_OWNER_TITLE: process.env.COMPANY_OWNER_TITLE,
     });
   }
   return cached;

@@ -21,6 +21,10 @@ const ENV_KEYS = [
   "AI_SAFETY_THRESHOLD",
   "AI_RETRIEVAL_TOP_K",
   "NOTIFY_AI_REFINEMENT_ENABLED",
+  "COMPANY_NAME",
+  "COMPANY_INDUSTRY",
+  "COMPANY_TIMEZONE",
+  "COMPANY_OWNER_TITLE",
 ] as const;
 
 let snapshot: Record<string, string | undefined>;
@@ -149,5 +153,27 @@ describe("getConfig", () => {
     process.env.NOTIFY_AI_REFINEMENT_ENABLED = "1";
     resetConfigCache();
     expect(getConfig().NOTIFY_AI_REFINEMENT_ENABLED).toBe(true);
+  });
+
+  it("defaults the company profile to PT Maha Karya Haluoleo's real values (Sprint 3A: no hardcoded business values in code)", () => {
+    const config = getConfig();
+    expect(config.COMPANY_NAME).toBe("PT Maha Karya Haluoleo");
+    expect(config.COMPANY_TIMEZONE).toBe("Asia/Makassar");
+    expect(config.COMPANY_OWNER_TITLE).toBe("Owner");
+    expect(config.COMPANY_INDUSTRY.length).toBeGreaterThan(0);
+  });
+
+  it("overrides every company profile value from env", () => {
+    process.env.COMPANY_NAME = "Test Co";
+    process.env.COMPANY_INDUSTRY = "Test Industry";
+    process.env.COMPANY_TIMEZONE = "Asia/Jakarta";
+    process.env.COMPANY_OWNER_TITLE = "CEO";
+    resetConfigCache();
+
+    const config = getConfig();
+    expect(config.COMPANY_NAME).toBe("Test Co");
+    expect(config.COMPANY_INDUSTRY).toBe("Test Industry");
+    expect(config.COMPANY_TIMEZONE).toBe("Asia/Jakarta");
+    expect(config.COMPANY_OWNER_TITLE).toBe("CEO");
   });
 });

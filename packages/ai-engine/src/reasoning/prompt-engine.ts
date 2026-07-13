@@ -1,5 +1,5 @@
 import type { KnowledgeItem } from "@mkh/database";
-import { COMPANY_CONTEXT } from "./company-context";
+import { getCompanyContext } from "./company-context";
 import { PROMPT_DEFINITIONS } from "./prompts/index";
 import type { CompanyContext, PromptDefinition } from "./types";
 
@@ -16,7 +16,7 @@ export function getPromptDefinition(moduleId: PromptDefinition["moduleId"]): Pro
  * plus the Output Engine's JSON contract — this is what makes every
  * provider call return a parseable ReasoningOutput regardless of provider.
  */
-export function buildSystemPrompt(promptDefinition: PromptDefinition, companyContext: CompanyContext = COMPANY_CONTEXT): string {
+export function buildSystemPrompt(promptDefinition: PromptDefinition, companyContext: CompanyContext = getCompanyContext()): string {
   return [
     `# ROLE\n${promptDefinition.role}`,
     `# OBJECTIVE\n${promptDefinition.objective}`,

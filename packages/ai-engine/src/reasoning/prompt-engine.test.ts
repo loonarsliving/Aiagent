@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { KnowledgeItem } from "@mkh/database";
 import { AI_MODULE_IDS } from "@mkh/shared";
 import { buildSystemPrompt, buildUserPrompt, getPromptDefinition } from "./prompt-engine";
-import { COMPANY_CONTEXT } from "./company-context";
+import { getCompanyContext } from "./company-context";
 
 describe("getPromptDefinition", () => {
   it("resolves a PromptDefinition for every AI_MODULE_ID plus notification-coordinator", () => {
@@ -41,9 +41,10 @@ describe("buildSystemPrompt", () => {
   });
 
   it("embeds the company context passed in", () => {
-    const prompt = buildSystemPrompt(getPromptDefinition("finance-analyst"), COMPANY_CONTEXT);
-    expect(prompt).toContain(COMPANY_CONTEXT.companyName);
-    expect(prompt).toContain(COMPANY_CONTEXT.timezone);
+    const companyContext = getCompanyContext();
+    const prompt = buildSystemPrompt(getPromptDefinition("finance-analyst"), companyContext);
+    expect(prompt).toContain(companyContext.companyName);
+    expect(prompt).toContain(companyContext.timezone);
   });
 });
 

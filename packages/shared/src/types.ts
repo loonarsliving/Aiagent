@@ -234,7 +234,42 @@ export interface ReasoningFailure {
   reason: string;
 }
 
-export type ReasoningResult = (ReasoningOutput & { failed?: false }) | ReasoningFailure;
+/**
+ * Sprint 3A — a Notification Object, not a live send. Every recommendation
+ * that reaches "Generate Notification" in the reasoning pipeline produces
+ * one of these; `channel` is always a placeholder (see NotificationChannelType)
+ * since no external channel is connected in this sprint — dispatching it is
+ * a separate concern (`@mkh/notifications`'s `notify()`), and nothing here
+ * calls out to WhatsApp/Meta/OTA/MK Connect.
+ */
+export interface NotificationObject {
+  recipient: string;
+  priority: ReasoningPriority;
+  title: string;
+  message: string;
+  reason: string;
+  suggestedAction: string;
+  escalation: string | null;
+  /** Always "dummy" until a real channel is connected — see docs/CONNECTORS.md. */
+  channel: NotificationChannelType;
+  approvalLevel: ApprovalLevel;
+  sourceModuleId: AIModuleId;
+  createdAt: string;
+}
+
+/**
+ * The governance layer applied on top of the raw Output Engine result:
+ * `approvalLevel` is computed deterministically from the worker's own
+ * GovernanceProfile (never self-reported by the model), and `notification`
+ * is the "Generate Notification" pipeline step's output. See
+ * packages/ai-engine/src/reasoning/reasoning-engine.ts.
+ */
+export interface GovernedReasoningOutput extends ReasoningOutput {
+  approvalLevel: ApprovalLevel;
+  notification: NotificationObject;
+}
+
+export type ReasoningResult = (GovernedReasoningOutput & { failed?: false }) | ReasoningFailure;
 
 /**
  * The audit trail for every AIProvider call — distinct from WorkLogEntry
