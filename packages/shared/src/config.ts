@@ -19,7 +19,7 @@ const envSchema = z.object({
   AI_PROVIDER: z.enum(["gemini", "claude", "openai", "ollama"]).default("gemini"),
   /** Required only when AI_PROVIDER=gemini. Never hardcoded — read from env only. */
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().default("gemini-2.0-flash"),
+  GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
   /** 0-2, higher = more creative/less deterministic. */
   AI_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.3),
   AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(64).max(8192).default(1024),
